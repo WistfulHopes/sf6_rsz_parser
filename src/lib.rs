@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::rsz::{parse_rsz, RSZ};
 use crate::rsz::json_parser::parse_json;
 
-mod rsz;
+pub mod rsz;
 
 #[derive(Serialize, Deserialize)]
 struct Prefab {
