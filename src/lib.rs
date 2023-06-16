@@ -359,7 +359,7 @@ fn parse_action_list(input: &[u8], offset: usize) -> IResult<&[u8], ActionList> 
     }))
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct DataListInfo {
     data_start_offset: u64,
     rsz_offset: u64,
