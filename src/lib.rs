@@ -248,6 +248,50 @@ fn parse_action_data(input: &[u8]) -> IResult<&[u8], ActionData>
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct KeyData {
+    pub key_start_frame: i32,
+    pub key_end_frame: i32,
+}
+
+fn parse_key_data(input: &[u8]) -> IResult<&[u8], KeyData>
+{
+    map(
+        tuple((
+            le_i32,
+            le_i32,
+        )),
+        |(
+             key_start_frame,
+             key_end_frame,
+         )|{
+            KeyData {
+                key_start_frame,
+                key_end_frame,
+            }
+        }
+    )(input)
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ObjectData {
+    pub data_count: i32,
+    pub reserved: i32,
+    pub key_data: Vec<KeyData>
+}
+
+fn parse_object_data(input: &[u8]) -> IResult<&[u8], ObjectData>
+{
+    let (remainder, data_count) = le_i32::<&[u8], nom::error::Error<&[u8]>>(input).unwrap();
+    let (remainder, reserved) = le_i32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    let (remainder, key_data) = count(parse_key_data, data_count as usize)(remainder).unwrap();
+    Ok((remainder, ObjectData {
+        data_count,
+        reserved,
+        key_data,
+    }))
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct ActionListInfo {
     #[serde(skip)]
     action_offset: u64,
@@ -295,7 +339,7 @@ pub struct ObjectInfo {
     rsz_offset: u64,
     #[serde(skip)]
     rsz_end: u64,
-    pub action_data: ActionData,
+    pub object_data: ObjectData,
 }
 
 fn parse_object_info(input: &[u8], offset: usize) -> IResult<&[u8], ObjectInfo> {
@@ -305,14 +349,14 @@ fn parse_object_info(input: &[u8], offset: usize) -> IResult<&[u8], ObjectInfo> 
     let (remainder_new, data_start_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(object_start).unwrap();
     let (remainder_new, rsz_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder_new).unwrap();
     let (remainder_new, rsz_end) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder_new).unwrap();
-    let (_, action_data) = parse_action_data(remainder_new).unwrap();
+    let (_, object_data) = parse_object_data(remainder_new).unwrap();
 
     Ok((remainder, ObjectInfo{
         object_offset,
         data_start_offset,
         rsz_offset,
         rsz_end,
-        action_data,
+        object_data,
     }))
 }
 
