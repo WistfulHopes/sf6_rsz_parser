@@ -20,7 +20,7 @@ impl fmt::Display for RSZError {
     }
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone)]
+#[derive(Serialize, Deserialize, Copy, Clone, PartialEq)]
 pub enum TypeIDs {
     UknError = 0,
 	UknType,
@@ -229,6 +229,14 @@ pub fn get_field_size(class_hash: &u32, field_index: &usize) -> usize
     let class_key = format!("{:x}", class_hash);
     JSON.lock().unwrap().get(class_key).unwrap().get("fields").unwrap()
         .get(field_index).unwrap().get("size")
+        .unwrap().as_u64().unwrap() as usize
+}
+
+pub fn get_field_alignment(class_hash: &u32, field_index: &usize) -> usize
+{
+    let class_key = format!("{:x}", class_hash);
+    JSON.lock().unwrap().get(class_key).unwrap().get("fields").unwrap()
+        .get(field_index).unwrap().get("align")
         .unwrap().as_u64().unwrap() as usize
 }
 

@@ -326,14 +326,14 @@ pub struct Object {
 
 fn parse_object(input: &[u8], offset: usize) -> IResult<&[u8], Object> {
     let (remainder_new, info) = parse_object_info(input, offset).unwrap();
-    let action_remainder = &input[info.rsz_offset.clone() as usize..];
-    let (_, action) = parse_rsz(action_remainder, false).unwrap();
+    let (_, action) = parse_rsz(input, info.rsz_offset.clone() as usize,false).unwrap();
 
     Ok((remainder_new, Object{
         info,
         action,
     }))
 }
+
 
 #[derive(Serialize, Deserialize)]
 pub struct ActionList {
@@ -344,8 +344,7 @@ pub struct ActionList {
 
 fn parse_action_list(input: &[u8], offset: usize) -> IResult<&[u8], ActionList> {
     let (_, info) = parse_action_list_info(input, offset).unwrap();
-    let action_remainder = &input[info.rsz_offset.clone() as usize..];
-    let (remainder_new, action) = parse_rsz(action_remainder, false).unwrap();
+    let (remainder_new, action) = parse_rsz(input, info.rsz_offset.clone() as usize, false).unwrap();
     let mut objects: Vec<Object> = vec![];
     for n in 0..info.object_count.clone() {
         let offset = (info.data_start_offset.clone() + 8 * n as u64) as usize;
@@ -407,8 +406,7 @@ fn parse_data_list_item(input: &[u8], offset: usize) -> IResult<&[u8], DataListI
     let data_remainder = &input[data_list_offset as usize..];
     let (data_remainder, info) = parse_data_list_info(data_remainder).unwrap();
     let (_, data_ids) = count(le_u32::<&[u8], nom::error::Error<&[u8]>>, info.data_count as usize)(data_remainder).unwrap();
-    let data_remainder = &input[info.rsz_offset.clone() as usize..];
-    let (_, data_rsz) = parse_rsz(data_remainder, false).unwrap();
+    let (_, data_rsz) = parse_rsz(input, info.rsz_offset.clone() as usize,false).unwrap();
     Ok((remainder, DataListItem{
         data_list_offset,
         info,
@@ -445,8 +443,7 @@ pub fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     let (mut remainder, action_list_table) = parse_action_list_table(remainder).unwrap();
     println!("Header parsed!");
     println!("Parsing style data...");
-    let style_data_buffer = &input[(&action_list_table.action_rsz + &action_list_table.style_data_offset) as usize..];
-    let (_, style_data) = parse_rsz(style_data_buffer, true).unwrap();
+    let (_, style_data) = parse_rsz(input, (&action_list_table.action_rsz + &action_list_table.style_data_offset) as usize, true).unwrap();
     println!("Style data parsed!");
     let mut action_list: Vec<ActionList> = vec![];
     println!("Parsing action list...");
@@ -474,8 +471,7 @@ pub fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     println!("Data tables parsed!");
 
     println!("Parsing personal data...");
-    let personal_data_remainder = &input[header.object_table_rsz_offset.clone() as usize..];
-    let (_, personal_data) = parse_rsz(personal_data_remainder, false).unwrap();
+    let (_, personal_data) = parse_rsz(input, header.object_table_rsz_offset.clone() as usize, false).unwrap();
     println!("Personal data parsed!");
 
     println!("Fchar file parsed!");

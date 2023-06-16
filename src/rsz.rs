@@ -6,7 +6,7 @@ use nom::multi::count;
 use nom::number::complete::{le_f32, le_f64, le_i16, le_i32, le_i64, le_i8, le_u16, le_u32, le_u64, le_u8};
 use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
-use crate::rsz::json_parser::{get_field_array_state, get_field_count, get_field_name, get_field_size, get_field_type, TypeIDs};
+use crate::rsz::json_parser::{get_field_array_state, get_field_count, get_field_name, get_field_size, get_field_type, TypeIDs, get_field_alignment};
 
 pub mod json_parser;
 
@@ -153,10 +153,15 @@ pub struct RSZData {
     pub fields: Vec<RSZField>,
 }
 
-fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<&[u8], RSZValue>
+fn get_value(input: &[u8], offset: usize, field_type: TypeIDs, hash: u32, n: usize, alignment: usize) -> IResult<&[u8], RSZValue>
 {
     let field_size = get_field_size(&hash, &n);
-    let mut remainder: &[u8] = input;
+    let mut remainder: &[u8] = &input[offset.clone()..];
+    let alignment_remainder = (16 - (input.len() - remainder.len()) % 16) % alignment;
+    if alignment_remainder != 0 {
+        remainder = &remainder[alignment_remainder..];
+    }
+    let base_remainder = remainder;
     let value = match field_type
     {
         TypeIDs::Resource => {
@@ -169,10 +174,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             RSZValue::Unk(data.to_vec())
         }
         TypeIDs::UserData => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let (remaining_new, data) = parse_userdata_info(remainder).unwrap();
             remainder = remaining_new;
             RSZValue::UserData(data)
@@ -193,85 +194,51 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             RSZValue::UInt8(ubyte.clone())
         }
         TypeIDs::S16 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 2;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut short = 0i16;
             (remainder, short) = le_i16::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             RSZValue::Int16(short.clone())
         }
         TypeIDs::U16 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 2;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut ushort = 0u16;
             (remainder, ushort) = le_u16::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             RSZValue::UInt16(ushort.clone())
         }
         TypeIDs::S32 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut int = 0i32;
             (remainder, int) = le_i32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             RSZValue::Int32(int.clone())
         }
         TypeIDs::U32 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut uint = 0u32;
             (remainder, uint) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             RSZValue::UInt32(uint.clone())
         }
         TypeIDs::S64 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut long = 0i64;
             (remainder, long) = le_i64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             RSZValue::Int64(long.clone())
         }
         TypeIDs::U64 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut ulong = 0u64;
             (remainder, ulong) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             RSZValue::UInt64(ulong.clone())
         }
         TypeIDs::F32 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut float = 0f32;
             (remainder, float) = le_f32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             RSZValue::Float(float.clone())
         }
         TypeIDs::F64 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut double = 0f64;
             (remainder, double) = le_f64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             RSZValue::Double(double.clone())
         }
         TypeIDs::String => {
-            /*let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }*/
+            let mut size = 0u32;
+            (remainder, size) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut data: &[u8] = &[];
-            (remainder, data) = take::<usize, &[u8], nom::error::Error<&[u8]>>(field_size)(remainder).unwrap();
-            RSZValue::Unk(data.to_vec())
+            (remainder, data) = take::<usize, &[u8], nom::error::Error<&[u8]>>((size * 2) as usize)(remainder).unwrap();
+            RSZValue::String(std::str::from_utf8(data).unwrap().to_owned())
         }
         TypeIDs::MBString => {
             /*let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
@@ -283,19 +250,11 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             RSZValue::Unk(data.to_vec())
         }
         TypeIDs::Enum => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut int = 0i32;
             (remainder, int) = le_i32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             RSZValue::Int32(int.clone())
         }
         TypeIDs::Uint2 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0u32;
             (remainder, x) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0u32;
@@ -306,10 +265,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Uint3 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0u32;
             (remainder, x) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0u32;
@@ -323,10 +278,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Uint4 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0u32;
             (remainder, x) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0u32;
@@ -343,10 +294,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Int2 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0i32;
             (remainder, x) = le_i32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0i32;
@@ -357,10 +304,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Int3 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0i32;
             (remainder, x) = le_i32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0i32;
@@ -374,10 +317,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Int4 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0i32;
             (remainder, x) = le_i32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0i32;
@@ -393,11 +332,7 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
                 w: w.clone(),
             })
         }
-        TypeIDs::Float2 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
+        TypeIDs::Float2 => {0f32;
             let mut x = 0f32;
             (remainder, x) = le_f32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0f32;
@@ -408,10 +343,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Float3 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0f32;
             (remainder, x) = le_f32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0f32;
@@ -425,10 +356,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Float4 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0f32;
             (remainder, x) = le_f32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0f32;
@@ -445,10 +372,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Vec2 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0f32;
             (remainder, x) = le_f32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0f32;
@@ -459,10 +382,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Vec3 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0f32;
             (remainder, x) = le_f32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0f32;
@@ -476,10 +395,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Vec4 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0f32;
             (remainder, x) = le_f32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0f32;
@@ -496,10 +411,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Quaternion => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0f32;
             (remainder, x) = le_f32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0f32;
@@ -516,10 +427,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Guid => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 8;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut data: &[u8] = &[];
             (remainder, data) = take::<usize, &[u8], nom::error::Error<&[u8]>>(field_size)(remainder).unwrap();
             RSZValue::GUID(GUID {
@@ -527,29 +434,16 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Color => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut uint = 0u32;
             (remainder, uint) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             RSZValue::UInt32(uint.clone())
         }
         TypeIDs::DateTime => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut long = 0i64;
             (remainder, long) = le_i64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             RSZValue::Int64(long.clone())
         }
         TypeIDs::PlaneXZ => {
-
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0f32;
             (remainder, x) = le_f32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut z = 0f32;
@@ -560,10 +454,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Point => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0f32;
             (remainder, x) = le_f32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0f32;
@@ -574,10 +464,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Range => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0f32;
             (remainder, x) = le_f32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0f32;
@@ -588,10 +474,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::RangeI => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x = 0u32;
             (remainder, x) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let mut y = 0u32;
@@ -602,10 +484,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Uri => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 8;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut data: &[u8] = &[];
             (remainder, data) = take::<usize, &[u8], nom::error::Error<&[u8]>>(field_size)(remainder).unwrap();
             RSZValue::GUID(GUID {
@@ -613,10 +491,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::GameObjectRef => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 8;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut data: &[u8] = &[];
             (remainder, data) = take::<usize, &[u8], nom::error::Error<&[u8]>>(field_size)(remainder).unwrap();
             RSZValue::GUID(GUID {
@@ -624,20 +498,12 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Sfix => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut fix = 0i32;
             (remainder, fix) = le_i32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let float = fix.clone() as f32 / 65536.0f32;
             RSZValue::Float(float)
         }
         TypeIDs::Sfix2 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x_int = 0i32;
             (remainder, x_int) = le_i32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let x = x_int.clone() as f32 / 65536.0f32;
@@ -650,10 +516,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Sfix3 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x_int = 0i32;
             (remainder, x_int) = le_i32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let x = x_int.clone() as f32 / 65536.0f32;
@@ -670,10 +532,6 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             })
         }
         TypeIDs::Sfix4 => {
-            let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }
             let mut x_int = 0i32;
             (remainder, x_int) = le_i32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
             let x = x_int.clone() as f32 / 65536.0f32;
@@ -699,42 +557,65 @@ fn get_value(input: &[u8], field_type: TypeIDs, hash: u32, n: usize) -> IResult<
             RSZValue::Unk(data.to_vec())
         }
     };
-    Ok((remainder, value))
+    if field_type != TypeIDs::String {
+        Ok((&base_remainder[field_size..], value))
+    }
+    else {
+        Ok((remainder, value))
+    }
 }
 
-fn parse_rsz_data(input: &[u8], hash: u32) -> IResult<&[u8], RSZData> {
+fn parse_rsz_data(input: &[u8], offset: usize, hash: u32) -> IResult<&[u8], RSZData> {
     let name = json_parser::get_rsz_class_name(&hash).unwrap();
     let mut fields: Vec<RSZField> = vec![];
-    let mut remainder: &[u8] = input;
+    let mut remainder: &[u8] = &input[offset.clone()..];
     for n in 0..get_field_count(&hash)
     {
         let field_type = get_field_type(&hash, &n);
         let is_list = get_field_array_state(&hash, &n).unwrap();
+        let field_alignment = get_field_alignment(&hash, &n);
         if is_list
         {
-            let count = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap().1;
+            let mut new_remainder = remainder;
+            let alignment_remainder = (16 -(input.len() - new_remainder.len()) % 16) % 4;
+            if alignment_remainder != 0 {
+                new_remainder = &new_remainder[alignment_remainder..];
+            }
+            let mut count: u32 = 0;
+            (new_remainder, count) = le_u32::<&[u8], nom::error::Error<&[u8]>>(new_remainder).unwrap();
             let mut values: Vec<RSZValue> = vec![];
+            if count > 1000
+            {
+                println!("Testing for bugs");
+            }
             for _ in 0..count {
-                values.push(get_value(remainder, field_type, hash.clone(), n.clone()).unwrap().1);
+                let offset = input.len() - new_remainder.len();
+                let (value_remainder, value) = get_value(input, offset, field_type, hash.clone(), n.clone(), field_alignment.clone()).unwrap();
+                values.push(value);
+                new_remainder = value_remainder;
             }
             let value = RSZValue::List(values);
-            RSZField{
+            fields.push(RSZField{
                 name: get_field_name(&hash, &n),
                 value_type: field_type,
                 value
-            };
+            });
+            remainder = new_remainder;
         }
         else {
+            let offset = input.len() - remainder.len();
+            let (new_remainder, value) = get_value(input, offset, field_type, hash.clone(), n, field_alignment).unwrap();
             fields.push(
                 RSZField{
                     name: get_field_name(&hash, &n),
                     value_type: field_type,
-                    value: get_value(remainder, field_type, hash.clone(), n).unwrap().1
+                    value
                 }
             );
+            remainder = new_remainder;
         }
     };
-    Ok((input, RSZData{
+    Ok((remainder, RSZData{
         name,
         fields,
     }))
@@ -835,10 +716,11 @@ pub struct RSZ {
     pub data: Vec<RSZData>,
 }
 
-pub fn parse_rsz(input: &[u8], log: bool) -> IResult<&[u8], RSZ> {
-    let (remainder, header) = parse_rsz_header(input).unwrap();
-    let (remainder, object_table) = count(le_i32::<&[u8], nom::error::Error<&[u8]>>, header.object_count as usize)(remainder).unwrap();
-    let (mut remainder, instance_infos) = count(parse_instance_info, header.instance_count as usize)(remainder).unwrap();
+pub fn parse_rsz(input: &[u8], offset: usize, log: bool) -> IResult<&[u8], RSZ> {
+    let orig_remainder = &input[offset..];
+    let (orig_remainder, header) = parse_rsz_header(orig_remainder).unwrap();
+    let (orig_remainder, object_table) = count(le_i32::<&[u8], nom::error::Error<&[u8]>>, header.object_count as usize)(orig_remainder).unwrap();
+    let (mut remainder, instance_infos) = count(parse_instance_info, header.instance_count as usize)(orig_remainder).unwrap();
     let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 16;
     if alignment_remainder != 0 {
         remainder = &remainder[alignment_remainder..];
@@ -849,7 +731,8 @@ pub fn parse_rsz(input: &[u8], log: bool) -> IResult<&[u8], RSZ> {
         println!("Parsing RSZ data...");
         let bar = ProgressBar::new(header.instance_count.clone() as u64);
         for n in 1..header.instance_count {
-            let (remainder_new, cur_data) = parse_rsz_data(remainder, instance_infos[n as usize].hash.clone()).unwrap();
+            let new_offset = input.len() - remainder.len();
+            let (remainder_new, cur_data) = parse_rsz_data(input, new_offset, instance_infos[n as usize].hash.clone()).unwrap();
             data.push(cur_data);
             remainder = remainder_new;
             if log {
@@ -861,7 +744,8 @@ pub fn parse_rsz(input: &[u8], log: bool) -> IResult<&[u8], RSZ> {
     }
     else {
         for n in 1..header.instance_count {
-            let (remainder_new, cur_data) = parse_rsz_data(remainder, instance_infos[n as usize].hash.clone()).unwrap();
+            let new_offset = input.len() - remainder.len();
+            let (remainder_new, cur_data) = parse_rsz_data(input, new_offset, instance_infos[n as usize].hash.clone()).unwrap();
             data.push(cur_data);
             remainder = remainder_new;
         }
