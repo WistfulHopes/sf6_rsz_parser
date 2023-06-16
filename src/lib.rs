@@ -216,10 +216,10 @@ fn parse_action_list_table(input: &[u8]) -> IResult<&[u8], ActionListTable>
 
 #[derive(Serialize, Deserialize)]
 pub struct ActionData {
-    action_id: i32,
-    frames: i32,
-    key_start_frame: i32,
-    key_end_frame: i32,
+    pub action_id: i32,
+    pub frames: i32,
+    pub key_start_frame: i32,
+    pub key_end_frame: i32,
 }
 
 fn parse_action_data(input: &[u8]) -> IResult<&[u8], ActionData>
