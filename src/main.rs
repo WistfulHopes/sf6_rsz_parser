@@ -1,4 +1,6 @@
 use std::env;
+use std::fs::File;
+use std::io::{BufReader, Read};
 use std::process::exit;
 use indicatif::ProgressBar;
 use nom::{
@@ -10,6 +12,7 @@ use nom::multi::count;
 use nom::number::complete::{le_i32, le_u32, le_u64};
 use serde::{Deserialize, Serialize};
 use crate::rsz::{parse_rsz, RSZ};
+use crate::rsz::json_parser::parse_json;
 
 mod rsz;
 
@@ -317,15 +320,72 @@ fn parse_action_list(input: &[u8], offset: usize) -> IResult<&[u8], ActionList> 
     let action_remainder = &input[info.rsz_offset.clone() as usize..];
     let (remainder_new, action) = parse_rsz(action_remainder, false).unwrap();
     let mut objects: Vec<Object> = vec![];
-    for _ in 0..info.object_count.clone() {
-        let offset = info.data_start_offset.clone() as usize;
-        let (object_remainder, object) = parse_object(input, offset).unwrap();
+    for n in 0..info.object_count.clone() {
+        let offset = (info.data_start_offset.clone() + 8 * n as u64) as usize;
+        let (_, object) = parse_object(input, offset).unwrap();
         objects.push(object);
     };
     Ok((remainder_new, ActionList{
         info,
         action,
         objects,
+    }))
+}
+
+#[derive(Serialize, Deserialize)]
+struct DataListInfo {
+    data_start_offset: u64,
+    rsz_offset: u64,
+    data_end_offset: u64,
+    data_count: u32,
+}
+
+fn parse_data_list_info(input: &[u8]) -> IResult<&[u8], DataListInfo>
+{
+    map(
+        tuple((
+            le_u64,
+            le_u64,
+            le_u64,
+            le_u32,
+        )),
+        |(
+             data_start_offset,
+             rsz_offset,
+             data_end_offset,
+             data_count,
+         )|{
+            DataListInfo {
+                data_start_offset,
+                rsz_offset,
+                data_end_offset,
+                data_count,
+            }
+        }
+    )(input)
+}
+
+#[derive(Serialize, Deserialize)]
+struct DataListItem {
+    data_list_offset: u64,
+    info: DataListInfo,
+    data_ids: Vec<u32>,
+    data_rsz: RSZ,
+}
+
+fn parse_data_list_item(input: &[u8], offset: usize) -> IResult<&[u8], DataListItem> {
+    let remainder = &input[offset..];
+    let (remainder, data_list_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    let data_remainder = &input[data_list_offset as usize..];
+    let (data_remainder, info) = parse_data_list_info(data_remainder).unwrap();
+    let (_, data_ids) = count(le_u32::<&[u8], nom::error::Error<&[u8]>>, info.data_count as usize)(data_remainder).unwrap();
+    let data_remainder = &input[info.rsz_offset.clone() as usize..];
+    let (_, data_rsz) = parse_rsz(data_remainder, false).unwrap();
+    Ok((remainder, DataListItem{
+        data_list_offset,
+        info,
+        data_ids,
+        data_rsz,
     }))
 }
 
@@ -337,6 +397,9 @@ struct CharacterAsset {
     action_list_table: ActionListTable,
     style_data: RSZ,
     action_list: Vec<ActionList>,
+    data_id_table: Vec<u32>,
+    data_list_table: Vec<DataListItem>,
+    personal_data: RSZ,
 }
 
 fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
@@ -344,7 +407,7 @@ fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     let (remainder, header) = parse_fchar_header(input).unwrap();
     let (remainder, id_table) = count(le_i32::<&[u8], nom::error::Error<&[u8]>>, header.object_count as usize)(remainder).unwrap();
     let (mut remainder, parent_id_table) = count(le_i32::<&[u8], nom::error::Error<&[u8]>>, header.object_count as usize)(remainder).unwrap();
-    let alignment_remainder = (input.len() - remainder.len()) % 16;
+    let alignment_remainder = (16 - (input.len() - remainder.len()) % 16) % 16;
     if alignment_remainder != 0 {
         remainder = &remainder[alignment_remainder..];
     }
@@ -366,6 +429,23 @@ fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     }
     bar.finish();
     println!("Action list parsed!");
+    
+    println!("Parsing data tables...");
+    let data_id_remainder = &input[header.data_id_table_offset.clone() as usize..];
+    let (mut data_remainder, data_id_table) = count(le_u32::<&[u8], nom::error::Error<&[u8]>>, header.data_count as usize)(data_id_remainder).unwrap();
+    let mut data_list_table: Vec<DataListItem> = vec![];
+    for _ in 0..header.data_count {
+        let offset = input.len() - data_remainder.len();
+        let (remainder_new, data_list_item) = parse_data_list_item(input, offset).unwrap();
+        data_remainder = remainder_new;
+        data_list_table.push(data_list_item);
+    }
+    println!("Data tables parsed!");
+    
+    println!("Parsing personal data...");
+    let personal_data_remainder = &input[header.object_table_rsz_offset.clone() as usize..];
+    let (_, personal_data) = parse_rsz(personal_data_remainder, false).unwrap();
+    println!("Personal data parsed!");
 
     println!("Fchar file parsed!");
 
@@ -375,7 +455,10 @@ fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
         parent_id_table,
         action_list_table,
         style_data,
-        action_list
+        action_list,
+        data_id_table,
+        data_list_table,
+        personal_data,
     }))
 }
 
@@ -385,9 +468,13 @@ fn main() -> std::io::Result<()> {
         println!("\nNot enough arguments! First argument should be the file to parse.\nSecond argument should be the RSZ json dump.\nThird argument should be the output json.");
         exit(1)
     }
-
-    let buffer = std::fs::read(&args[1]).unwrap();
-
+    
+    parse_json(args[2].clone())?;
+    
+    let mut reader = BufReader::with_capacity(0x3fffff,File::open(&args[1]).unwrap());
+    let mut buffer: Vec<u8> = vec![];
+    reader.read_to_end(&mut buffer).unwrap();
+    
     let fchar_file = parse_fchar(&buffer).unwrap().1;
     let serialized_fchar = serde_json::to_string_pretty(&fchar_file).unwrap();
     println!("Writing fchar to json...");

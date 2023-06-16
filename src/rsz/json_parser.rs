@@ -1,5 +1,13 @@
 use std::{fmt, fs::File, io::Read};
-use serde_json::Value;
+use serde_json::{Value, json};
+use std::sync::Mutex;
+use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
+
+lazy_static! {
+    /// This is an example for using doc comment attributes
+    static ref JSON: Mutex<Value> = Mutex::new(json!(null));
+}
 
 type RSZResult<T> = Result<T, RSZError>;
 
@@ -12,212 +20,221 @@ impl fmt::Display for RSZError {
     }
 }
 
+#[derive(Serialize, Deserialize, Copy, Clone)]
 pub enum TypeIDs {
     UknError = 0,
 	UknType,
 	NotInit,
 	ClassNotFound,
 	OutOfRange,
-	UndefinedTid,
-	ObjectTid,
-	ActionTid,
-	StructTid,
-	NativeObjectTid,
-	ResourceTid,
-	UserDataTid,
-	BoolTid,
-	C8Tid,
-	C16Tid,
-	S8Tid,
-	U8Tid,
-	S16Tid,
-	U16Tid,
-	S32Tid,
-	U32Tid,
-	S64Tid,
-	U64Tid,
-	F32Tid,
-	F64Tid,
-	StringTid,
-	MBStringTid,
-	EnumTid,
-	Uint2Tid,
-	Uint3Tid,
-	Uint4Tid,
-	Int2Tid,
-	Int3Tid,
-	Int4Tid,
-	Float2Tid,
-	Float3Tid,
-	Float4Tid,
-	Float3x3Tid,
-	Float3x4Tid,
-	Float4x3Tid,
-	Float4x4Tid,
-	Half2Tid,
-	Half4Tid,
-	Mat3Tid,
-	Mat4Tid,
-	Vec2Tid,
-	Vec3Tid,
-	Vec4Tid,
-	VecU4Tid,
-	QuaternionTid,
-	GuidTid,
-	ColorTid,
-	DateTimeTid,
-	AABBTid,
-	CapsuleTid,
-	TaperedCapsuleTid,
-	ConeTid,
-	LineTid,
-	LineSegmentTid,
-	OBBTid,
-	PlaneTid,
-	PlaneXZTid,
-	PointTid,
-	RangeTid,
-	RangeITid,
-	RayTid,
-	RayYTid,
-	SegmentTid,
-	SizeTid,
-	SphereTid,
-	TriangleTid,
-	CylinderTid,
-	EllipsoidTid,
-	AreaTid,
-	TorusTid,
-	RectTid,
-	Rect3DTid,
-	FrustumTid,
-	KeyFrameTid,
-	UriTid,
-	GameObjectRefTid,
-	RuntimeTypeTid,
-	SfixTid,
-	Sfix2Tid,
-	Sfix3Tid,
-	Sfix4Tid,
-	PositionTid,
-	F16Tid,
-	EndTid,
-	DataTid
+	Undefined,
+	Object,
+	Action,
+	Struct,
+	NativeObject,
+	Resource,
+	UserData,
+	Bool,
+	C8,
+	C16,
+	S8,
+	U8,
+	S16,
+	U16,
+	S32,
+	U32,
+	S64,
+	U64,
+	F32,
+	F64,
+	String,
+	MBString,
+	Enum,
+	Uint2,
+	Uint3,
+	Uint4,
+	Int2,
+	Int3,
+	Int4,
+	Float2,
+	Float3,
+	Float4,
+	Float3x3,
+	Float3x4,
+	Float4x3,
+	Float4x4,
+	Half2,
+	Half4,
+	Mat3,
+	Mat4,
+	Vec2,
+	Vec3,
+	Vec4,
+	VecU4,
+	Quaternion,
+	Guid,
+	Color,
+	DateTime,
+	AABB,
+	Capsule,
+	TaperedCapsule,
+	Cone,
+	Line,
+	LineSegment,
+	OBB,
+	Plane,
+	PlaneXZ,
+	Point,
+	Range,
+	RangeI,
+	Ray,
+	RayY,
+	Segment,
+	Size,
+	Sphere,
+	Triangle,
+	Cylinder,
+	Ellipsoid,
+	Area,
+	Torus,
+	Rect,
+	Rect3D,
+	Frustum,
+	KeyFrame,
+	Uri,
+	GameObjectRef,
+	RuntimeType,
+	Sfix,
+	Sfix2,
+	Sfix3,
+	Sfix4,
+	Position,
+	F16,
+	End,
+	Data
 }
 
-pub fn get_field_type(json: &Value, class_hash: &u32, field_index: &usize) -> TypeIDs {
+pub fn get_field_type(class_hash: &u32, field_index: &usize) -> TypeIDs {
     let class_key = format!("{:x}", class_hash);
+    let json = JSON.lock().unwrap();
     let type_name = json.get(class_key).unwrap()
         .get("fields").unwrap()
         .get(field_index).unwrap()
         .get("type").unwrap().as_str().unwrap();
     match type_name.to_lowercase().as_str() {
-        "undefined" => TypeIDs::UndefinedTid,
-        "object" => TypeIDs::ObjectTid,
-        "action" => TypeIDs::ActionTid,
-        "struct" => TypeIDs::StructTid,
-        "nativeobject" => TypeIDs::NativeObjectTid,
-        "resource" => TypeIDs::ResourceTid,
-        "userdata" => TypeIDs::UserDataTid,
-        "bool" => TypeIDs::BoolTid,
-        "c8" => TypeIDs::C8Tid,
-        "c16" => TypeIDs::C16Tid,
-        "s8" => TypeIDs::S8Tid,
-        "u8" => TypeIDs::U8Tid,
-        "s16" => TypeIDs::S16Tid,
-        "u16" => TypeIDs::U16Tid,
-        "s32" => TypeIDs::S32Tid,
-        "u32" => TypeIDs::U32Tid,
-        "s64" => TypeIDs::S64Tid,
-        "u64" => TypeIDs::U64Tid,
-        "f32" => TypeIDs::F32Tid,
-        "f64" => TypeIDs::F64Tid,
-        "string" => TypeIDs::StringTid,
-        "mbstring" => TypeIDs::MBStringTid,
-        "enum" => TypeIDs::EnumTid,
-        "uint2" => TypeIDs::Uint2Tid,
-        "uint3" => TypeIDs::Uint3Tid,
-        "uint4" => TypeIDs::Uint4Tid,
-        "int2" => TypeIDs::Int2Tid,
-        "int3" => TypeIDs::Int3Tid,
-        "int4" => TypeIDs::Int4Tid,
-        "float2" => TypeIDs::Float2Tid,
-        "float3" => TypeIDs::Float3Tid,
-        "float4" => TypeIDs::Float4Tid,
-        "float3x3" => TypeIDs::Float3x3Tid,
-        "float3x4" => TypeIDs::Float3x4Tid,
-        "float4x3" => TypeIDs::Float4x3Tid,
-        "float4x4" => TypeIDs::Float4x4Tid,
-        "half2" => TypeIDs::Half2Tid,
-        "half4" => TypeIDs::Half4Tid,
-        "mat3" => TypeIDs::Mat3Tid,
-        "mat4" => TypeIDs::Mat4Tid,
-        "vec2" => TypeIDs::Vec2Tid,
-        "vec3" => TypeIDs::Vec3Tid,
-        "vec4" => TypeIDs::Vec4Tid,
-        "vecu4" => TypeIDs::VecU4Tid,
-        "quaternion" => TypeIDs::QuaternionTid,
-        "guid" => TypeIDs::GuidTid,
-        "color" => TypeIDs::ColorTid,
-        "datetime" => TypeIDs::DateTimeTid,
-        "aabb" => TypeIDs::AABBTid,
-        "capsule" => TypeIDs::CapsuleTid,
-        "taperedcapsule" => TypeIDs::TaperedCapsuleTid,
-        "cone" => TypeIDs::ConeTid,
-        "line" => TypeIDs::LineTid,
-        "linesegment" => TypeIDs::LineSegmentTid,
-        "obb" => TypeIDs::OBBTid,
-        "plane" => TypeIDs::PlaneTid,
-        "planexz" => TypeIDs::PlaneXZTid,
-        "range" => TypeIDs::RangeTid,
-        "rangei" => TypeIDs::RangeITid,
-        "ray" => TypeIDs::RayTid,
-        "rayy" => TypeIDs::RayYTid,
-        "segment" => TypeIDs::SegmentTid,
-        "size" => TypeIDs::SizeTid,
-        "sphere" => TypeIDs::SphereTid,
-        "triangle" => TypeIDs::TriangleTid,
-        "cylinder" => TypeIDs::CylinderTid,
-        "ellipsoid" => TypeIDs::EllipsoidTid,
-        "area" => TypeIDs::AreaTid,
-        "torus" => TypeIDs::TorusTid,
-        "rect" => TypeIDs::RectTid,
-        "rect3d" => TypeIDs::Rect3DTid,
-        "frustum" => TypeIDs::FrustumTid,
-        "keyframe" => TypeIDs::KeyFrameTid,
-        "uri" => TypeIDs::UriTid,
-        "gameobjectref" => TypeIDs::GameObjectRefTid,
-        "runtimetype" => TypeIDs::RuntimeTypeTid,
-        "sfix" => TypeIDs::SfixTid,
-        "sfix2" => TypeIDs::Sfix2Tid,
-        "sfix3" => TypeIDs::Sfix3Tid,
-        "sfix4" => TypeIDs::Sfix4Tid,
-        "position" => TypeIDs::PositionTid,
-        "f16" => TypeIDs::F16Tid,
-        "end" => TypeIDs::EndTid,
-        "data" => TypeIDs::DataTid,
+        "undefined" => TypeIDs::Undefined,
+        "object" => TypeIDs::Object,
+        "action" => TypeIDs::Action,
+        "struct" => TypeIDs::Struct,
+        "nativeobject" => TypeIDs::NativeObject,
+        "resource" => TypeIDs::Resource,
+        "userdata" => TypeIDs::UserData,
+        "bool" => TypeIDs::Bool,
+        "c8" => TypeIDs::C8,
+        "c16" => TypeIDs::C16,
+        "s8" => TypeIDs::S8,
+        "u8" => TypeIDs::U8,
+        "s16" => TypeIDs::S16,
+        "u16" => TypeIDs::U16,
+        "s32" => TypeIDs::S32,
+        "u32" => TypeIDs::U32,
+        "s64" => TypeIDs::S64,
+        "u64" => TypeIDs::U64,
+        "f32" => TypeIDs::F32,
+        "f64" => TypeIDs::F64,
+        "string" => TypeIDs::String,
+        "mbstring" => TypeIDs::MBString,
+        "enum" => TypeIDs::Enum,
+        "uint2" => TypeIDs::Uint2,
+        "uint3" => TypeIDs::Uint3,
+        "uint4" => TypeIDs::Uint4,
+        "int2" => TypeIDs::Int2,
+        "int3" => TypeIDs::Int3,
+        "int4" => TypeIDs::Int4,
+        "float2" => TypeIDs::Float2,
+        "float3" => TypeIDs::Float3,
+        "float4" => TypeIDs::Float4,
+        "float3x3" => TypeIDs::Float3x3,
+        "float3x4" => TypeIDs::Float3x4,
+        "float4x3" => TypeIDs::Float4x3,
+        "float4x4" => TypeIDs::Float4x4,
+        "half2" => TypeIDs::Half2,
+        "half4" => TypeIDs::Half4,
+        "mat3" => TypeIDs::Mat3,
+        "mat4" => TypeIDs::Mat4,
+        "vec2" => TypeIDs::Vec2,
+        "vec3" => TypeIDs::Vec3,
+        "vec4" => TypeIDs::Vec4,
+        "vecu4" => TypeIDs::VecU4,
+        "quaternion" => TypeIDs::Quaternion,
+        "guid" => TypeIDs::Guid,
+        "color" => TypeIDs::Color,
+        "datetime" => TypeIDs::DateTime,
+        "aabb" => TypeIDs::AABB,
+        "capsule" => TypeIDs::Capsule,
+        "taperedcapsule" => TypeIDs::TaperedCapsule,
+        "cone" => TypeIDs::Cone,
+        "line" => TypeIDs::Line,
+        "linesegment" => TypeIDs::LineSegment,
+        "obb" => TypeIDs::OBB,
+        "plane" => TypeIDs::Plane,
+        "planexz" => TypeIDs::PlaneXZ,
+        "range" => TypeIDs::Range,
+        "rangei" => TypeIDs::RangeI,
+        "ray" => TypeIDs::Ray,
+        "rayy" => TypeIDs::RayY,
+        "segment" => TypeIDs::Segment,
+        "size" => TypeIDs::Size,
+        "sphere" => TypeIDs::Sphere,
+        "triangle" => TypeIDs::Triangle,
+        "cylinder" => TypeIDs::Cylinder,
+        "ellipsoid" => TypeIDs::Ellipsoid,
+        "area" => TypeIDs::Area,
+        "torus" => TypeIDs::Torus,
+        "rect" => TypeIDs::Rect,
+        "rect3d" => TypeIDs::Rect3D,
+        "frustum" => TypeIDs::Frustum,
+        "keyframe" => TypeIDs::KeyFrame,
+        "uri" => TypeIDs::Uri,
+        "gameobjectref" => TypeIDs::GameObjectRef,
+        "runtimetype" => TypeIDs::RuntimeType,
+        "sfix" => TypeIDs::Sfix,
+        "sfix2" => TypeIDs::Sfix2,
+        "sfix3" => TypeIDs::Sfix3,
+        "sfix4" => TypeIDs::Sfix4,
+        "position" => TypeIDs::Position,
+        "f16" => TypeIDs::F16,
+        "end" => TypeIDs::End,
+        "data" => TypeIDs::Data,
         _ => TypeIDs::UknType,
     }
 }
 
-pub fn get_field_count(json: &Value, class_hash: &u32) -> usize
+pub fn get_field_count(class_hash: &u32) -> usize
 {
     let class_key = format!("{:x}", class_hash);
-    json.get(class_key).unwrap().get("fields")
+    JSON.lock().unwrap().get(class_key).unwrap().get("fields")
         .unwrap().as_array().unwrap().len()
 }
 
-pub fn get_field_size(json: &Value, class_hash: &u32, field_index: &usize) -> usize
+pub fn get_field_name(class_hash: &u32, field_index: &usize) -> String {
+    let class_key = format!("{:x}", class_hash);
+    JSON.lock().unwrap().get(class_key).unwrap().get("fields").unwrap()
+        .get(field_index).unwrap().get("name")
+        .unwrap().as_str().unwrap().to_string()
+}
+
+pub fn get_field_size(class_hash: &u32, field_index: &usize) -> usize
 {
     let class_key = format!("{:x}", class_hash);
-    json.get(class_key).unwrap().get("fields").unwrap()
+    JSON.lock().unwrap().get(class_key).unwrap().get("fields").unwrap()
         .get(field_index).unwrap().get("size")
         .unwrap().as_u64().unwrap() as usize
 }
 
-pub fn get_field_array_state(json: &Value, class_hash: &u32, field_index: &usize) -> RSZResult<bool> {
+pub fn get_field_array_state(class_hash: &u32, field_index: &usize) -> RSZResult<bool> {
     let class_key = format!("{:x}", class_hash);
-    match json.get(class_key) {
+    match JSON.lock().unwrap().get(class_key) {
         Some(class) => {
             match class.get("fields") {
                 Some(fields) => {
@@ -244,10 +261,10 @@ pub fn get_field_array_state(json: &Value, class_hash: &u32, field_index: &usize
     }
 }
 
-pub fn get_rsz_class_name(json: &Value, class_hash: &u32) -> RSZResult<String>
+pub fn get_rsz_class_name(class_hash: &u32) -> RSZResult<String>
 {
     let class_key = format!("{:x}", class_hash);
-    match json.get(class_key) {
+    match JSON.lock().unwrap().get(class_key) {
         Some(class) => {
             match class.get("name") {
                 Some(name) => {
@@ -263,10 +280,13 @@ pub fn get_rsz_class_name(json: &Value, class_hash: &u32) -> RSZResult<String>
     }
 }
 
-pub fn parse_json() -> std::io::Result<Value> {
-    let mut file = File::open("rszsf6.json")?;
+pub fn parse_json(path: String) -> std::io::Result<()> {
+    let mut file = File::open(&path)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
 
-    Ok(serde_json::from_str(&contents)?)
+    let mut json = JSON.lock().unwrap();
+    *json = serde_json::from_str(&contents)?;
+    
+    Ok(())
 }
