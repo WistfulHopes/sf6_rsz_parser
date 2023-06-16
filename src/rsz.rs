@@ -742,14 +742,22 @@ fn parse_userdata_info(input: &[u8]) -> IResult<&[u8], RSZUserDataInfo> {
 
 #[derive(Serialize, Deserialize)]
 pub struct RSZHeader {
+    #[serde(skip)]
     pub magic: u32,
     pub version: u32,
+    #[serde(skip)]
     pub object_count: i32,
+    #[serde(skip)]
     pub instance_count: i32,
+    #[serde(skip)]
     pub userdata_count: i32,
+    #[serde(skip)]
     pub reserved: i32,
+    #[serde(skip)]
     pub instance_offsets: i64,
+    #[serde(skip)]
     pub data_offset: i64,
+    #[serde(skip)]
     pub userdata_offset: i64,
 }
 
@@ -795,8 +803,9 @@ fn parse_rsz_header(input: &[u8]) -> IResult<&[u8], RSZHeader> {
 #[derive(Serialize, Deserialize)]
 pub struct RSZ {
     pub header: RSZHeader,
+    #[serde(skip)]
     pub object_table: Vec<i32>,
-    #[serde(skip_serializing)]
+    #[serde(skip)]
     pub instance_infos: Vec<InstanceInfo>,
     pub userdata_infos: Vec<RSZUserDataInfo>,
     pub data: Vec<RSZData>,

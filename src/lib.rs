@@ -79,8 +79,8 @@ struct RSZFile
 }
 
 #[derive(Serialize, Deserialize)]
-struct CharacterAssetHeader {
-    version: u32,
+pub struct CharacterAssetHeader {
+    pub version: u32,
     #[serde(skip)]
     magic: u32,
     #[serde(skip)]
@@ -130,47 +130,47 @@ fn parse_fchar_header(input: &[u8]) -> IResult<&[u8], CharacterAssetHeader>
             le_u32,
             le_u32,
             le_u32,
-            )),
-            |(
-                 version,
-                 magic,
-                 id_table_offset,
-                 parent_id_table_offset,
-                 action_list_table_offset,
-                 data_id_table_offset,
-                 data_list_table_offset,
-                 string_object_offset,
-                 string_offset,
-                 object_table_rsz_offset,
-                 object_table_rsz_end,
-                 object_count,
-                 style_count,
-                 data_count,
-                 string_count,
-             )|{
-                CharacterAssetHeader {
-                    version,
-                    magic,
-                    id_table_offset,
-                    parent_id_table_offset,
-                    action_list_table_offset,
-                    data_id_table_offset,
-                    data_list_table_offset,
-                    string_object_offset,
-                    string_offset,
-                    object_table_rsz_offset,
-                    object_table_rsz_end,
-                    object_count,
-                    style_count,
-                    data_count,
-                    string_count,
-                }
+        )),
+        |(
+             version,
+             magic,
+             id_table_offset,
+             parent_id_table_offset,
+             action_list_table_offset,
+             data_id_table_offset,
+             data_list_table_offset,
+             string_object_offset,
+             string_offset,
+             object_table_rsz_offset,
+             object_table_rsz_end,
+             object_count,
+             style_count,
+             data_count,
+             string_count,
+         )|{
+            CharacterAssetHeader {
+                version,
+                magic,
+                id_table_offset,
+                parent_id_table_offset,
+                action_list_table_offset,
+                data_id_table_offset,
+                data_list_table_offset,
+                string_object_offset,
+                string_offset,
+                object_table_rsz_offset,
+                object_table_rsz_end,
+                object_count,
+                style_count,
+                data_count,
+                string_count,
             }
+        }
     )(input)
 }
 
 #[derive(Serialize, Deserialize, Default)]
-struct ActionListTable {
+pub struct ActionListTable {
     action_list_table_offset: u64,
     style_data_offset: u64,
     action_list_offset: u64,
@@ -215,9 +215,9 @@ fn parse_action_list_table(input: &[u8]) -> IResult<&[u8], ActionListTable>
 }
 
 #[derive(Serialize, Deserialize)]
-struct ActionData {
-    action_id: i32,
-    frames: i32,
+pub struct ActionData {
+    pub action_id: i32,
+    pub frames: i32,
     #[serde(skip)]
     action_data_count: i32,
     #[serde(skip)]
@@ -250,7 +250,7 @@ fn parse_action_data(input: &[u8]) -> IResult<&[u8], ActionData>
 }
 
 #[derive(Serialize, Deserialize)]
-struct ActionListInfo {
+pub struct ActionListInfo {
     #[serde(skip)]
     action_offset: u64,
     #[serde(skip)]
@@ -262,8 +262,8 @@ struct ActionListInfo {
     #[serde(skip)]
     action_count: u32,
     #[serde(skip)]
-    object_count: u32,
-    action_data: ActionData,
+    pub object_count: u32,
+    pub action_data: ActionData,
 }
 
 fn parse_action_list_info(input: &[u8], offset: usize) -> IResult<&[u8], ActionListInfo> {
@@ -288,7 +288,7 @@ fn parse_action_list_info(input: &[u8], offset: usize) -> IResult<&[u8], ActionL
 }
 
 #[derive(Serialize, Deserialize)]
-struct ObjectInfo {
+pub struct ObjectInfo {
     #[serde(skip)]
     object_offset: u64,
     #[serde(skip)]
@@ -297,7 +297,7 @@ struct ObjectInfo {
     rsz_offset: u64,
     #[serde(skip)]
     rsz_end: u64,
-    action_data: ActionData,
+    pub action_data: ActionData,
 }
 
 fn parse_object_info(input: &[u8], offset: usize) -> IResult<&[u8], ObjectInfo> {
@@ -319,9 +319,9 @@ fn parse_object_info(input: &[u8], offset: usize) -> IResult<&[u8], ObjectInfo> 
 }
 
 #[derive(Serialize, Deserialize)]
-struct Object {
-    info: ObjectInfo,
-    action: RSZ,
+pub struct Object {
+    pub info: ObjectInfo,
+    pub action: RSZ,
 }
 
 fn parse_object(input: &[u8], offset: usize) -> IResult<&[u8], Object> {
@@ -336,10 +336,10 @@ fn parse_object(input: &[u8], offset: usize) -> IResult<&[u8], Object> {
 }
 
 #[derive(Serialize, Deserialize)]
-struct ActionList {
-    info: ActionListInfo,
-    action: RSZ,
-    objects: Vec<Object>,
+pub struct ActionList {
+    pub info: ActionListInfo,
+    pub action: RSZ,
+    pub objects: Vec<Object>,
 }
 
 fn parse_action_list(input: &[u8], offset: usize) -> IResult<&[u8], ActionList> {
@@ -360,7 +360,7 @@ fn parse_action_list(input: &[u8], offset: usize) -> IResult<&[u8], ActionList> 
 }
 
 #[derive(Serialize, Deserialize)]
-struct DataListInfo {
+pub struct DataListInfo {
     data_start_offset: u64,
     rsz_offset: u64,
     data_end_offset: u64,
@@ -393,11 +393,12 @@ fn parse_data_list_info(input: &[u8]) -> IResult<&[u8], DataListInfo>
 }
 
 #[derive(Serialize, Deserialize)]
-struct DataListItem {
-    data_list_offset: u64,
-    info: DataListInfo,
-    data_ids: Vec<u32>,
-    data_rsz: RSZ,
+pub struct DataListItem {
+    pub data_list_offset: u64,
+    #[serde(skip)]
+    pub info: DataListInfo,
+    pub data_ids: Vec<u32>,
+    pub data_rsz: RSZ,
 }
 
 fn parse_data_list_item(input: &[u8], offset: usize) -> IResult<&[u8], DataListItem> {
@@ -417,22 +418,22 @@ fn parse_data_list_item(input: &[u8], offset: usize) -> IResult<&[u8], DataListI
 }
 
 #[derive(Serialize, Deserialize)]
-struct CharacterAsset {
-    header: CharacterAssetHeader,
+pub struct CharacterAsset {
+    pub header: CharacterAssetHeader,
     #[serde(skip)]
     id_table: Vec<i32>,
     #[serde(skip)]
     parent_id_table: Vec<i32>,
     #[serde(skip)]
     action_list_table: ActionListTable,
-    style_data: RSZ,
-    action_list: Vec<ActionList>,
-    data_id_table: Vec<u32>,
-    data_list_table: Vec<DataListItem>,
-    personal_data: RSZ,
+    pub style_data: RSZ,
+    pub action_list: Vec<ActionList>,
+    pub data_id_table: Vec<u32>,
+    pub data_list_table: Vec<DataListItem>,
+    pub personal_data: RSZ,
 }
 
-fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
+pub fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     println!("Parsing fchar file...");
     let (remainder, header) = parse_fchar_header(input).unwrap();
     let (remainder, id_table) = count(le_i32::<&[u8], nom::error::Error<&[u8]>>, header.object_count as usize)(remainder).unwrap();
@@ -459,7 +460,7 @@ fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     }
     bar.finish();
     println!("Action list parsed!");
-    
+
     println!("Parsing data tables...");
     let data_id_remainder = &input[header.data_id_table_offset.clone() as usize..];
     let (mut data_remainder, data_id_table) = count(le_u32::<&[u8], nom::error::Error<&[u8]>>, header.data_count as usize)(data_id_remainder).unwrap();
@@ -471,7 +472,7 @@ fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
         data_list_table.push(data_list_item);
     }
     println!("Data tables parsed!");
-    
+
     println!("Parsing personal data...");
     let personal_data_remainder = &input[header.object_table_rsz_offset.clone() as usize..];
     let (_, personal_data) = parse_rsz(personal_data_remainder, false).unwrap();
@@ -490,27 +491,4 @@ fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
         data_list_table,
         personal_data,
     }))
-}
-
-fn main() -> std::io::Result<()> {
-    let args: Vec<String> = env::args().collect();
-    if args.len() <= 3 {
-        println!("\nNot enough arguments! First argument should be the file to parse.\nSecond argument should be the RSZ json dump.\nThird argument should be the output json.");
-        exit(1)
-    }
-    
-    parse_json(args[2].clone())?;
-    
-    let mut reader = BufReader::with_capacity(0x3fffff,File::open(&args[1]).unwrap());
-    let mut buffer: Vec<u8> = vec![];
-    reader.read_to_end(&mut buffer).unwrap();
-    
-    let fchar_file = parse_fchar(&buffer).unwrap().1;
-    let serialized_fchar = serde_json::to_string_pretty(&fchar_file).unwrap();
-    println!("Writing fchar to json...");
-
-    std::fs::write(&args[3], serialized_fchar)?;
-    println!("Complete!");
-
-    Ok(())
 }
