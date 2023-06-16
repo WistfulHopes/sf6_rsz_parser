@@ -459,11 +459,12 @@ fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     println!("Parsing data tables...");
     let data_id_remainder = &input[header.data_id_table_offset.clone() as usize..];
     let (mut data_remainder, data_id_table) = count(le_u32::<&[u8], nom::error::Error<&[u8]>>, header.data_count as usize)(data_id_remainder).unwrap();
+    let mut data_list_remainder = &input[header.data_list_table_offset.clone() as usize..];
     let mut data_list_table: Vec<DataListItem> = vec![];
     for _ in 0..header.data_count {
-        let offset = input.len() - data_remainder.len();
+        let offset = input.len() - data_list_remainder.len();
         let (remainder_new, data_list_item) = parse_data_list_item(input, offset).unwrap();
-        data_remainder = remainder_new;
+        data_list_remainder = remainder_new;
         data_list_table.push(data_list_item);
     }
     println!("Data tables parsed!");
