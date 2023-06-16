@@ -215,7 +215,7 @@ fn parse_action_list_table(input: &[u8]) -> IResult<&[u8], ActionListTable>
 }
 
 #[derive(Serialize, Deserialize)]
-struct ActionData {
+pub struct ActionData {
     action_id: i32,
     frames: i32,
     key_start_frame: i32,
