@@ -7,8 +7,9 @@ use nom::{
 use nom::multi::count;
 use nom::number::complete::{le_i32, le_u32, le_u64};
 use serde::{Deserialize, Serialize};
-use crate::rsz::{parse_rsz, RSZ, GUID};
-use crate::rsz::json_parser::parse_json;
+use num_derive::FromPrimitive;
+
+use crate::rsz::{parse_rsz, RSZ};
 
 #[derive(Serialize, Deserialize)]
 pub struct CharacterAssetHeader {
@@ -388,6 +389,43 @@ fn parse_data_list_item(input: &[u8], offset: usize) -> IResult<&[u8], DataListI
     }))
 }
 
+#[derive(Serialize, Deserialize, FromPrimitive)]
+pub enum DataId {
+    AttackDataParams = 0,
+    ChargeParamSub = 1,
+    CommandParamSub = 2,
+    CommandGroup = 3,
+    StrikeData = 4,
+    ProjectileData = 15,
+    TriggerGroup = 16,
+    Trigger = 17,
+    StrikeBox = 20,
+    ProjectileBox = 21,
+    ThrowBox = 22,
+    ProximityBox = 23,
+    ReflectBox = 24,
+    PushBox = 25,
+    UniqueBox = 26,
+    ThrowHurtBox = 30,
+    HurtBox = 31,
+    OtherBox = 32,
+    GimmickBox = 33,
+    CameraBox = 34,
+    PartsBox = 35,
+    MissionData = 50,
+    AttackDataKarma = 70,
+    AssistComboRecipeData = 75,
+    VoiceFacialData = 80,
+    VoiceFacialDataEN = 81,
+    CommonOffset = 100,
+    AttackOwnerCurve = 101,
+    AttackTargetCurve = 102,
+    ScreenVibration = 103,
+    CameraData = 104,
+    AttackDataCommon = 105,
+    RectCommon = 106,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct CharacterAsset {
     pub header: CharacterAssetHeader,
@@ -399,7 +437,7 @@ pub struct CharacterAsset {
     pub action_list_table: ActionListTable,
     pub style_data: RSZ,
     pub action_list: Vec<ActionList>,
-    pub data_id_table: Vec<u32>,
+    pub data_id_table: Vec<DataId>,
     pub data_list_table: Vec<DataListItem>,
     pub personal_data: RSZ,
 }
@@ -433,7 +471,11 @@ pub fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
 
     println!("Parsing data tables...");
     let data_id_remainder = &input[header.data_id_table_offset.clone() as usize..];
-    let (mut data_remainder, data_id_table) = count(le_u32::<&[u8], nom::error::Error<&[u8]>>, header.data_count as usize)(data_id_remainder).unwrap();
+    let (_, data_id_u32_table) = count(le_u32::<&[u8], nom::error::Error<&[u8]>>, header.data_count as usize)(data_id_remainder).unwrap();
+    let mut data_id_table: Vec<DataId> = vec![];
+    for data_id in data_id_u32_table {
+        data_id_table.push(num::FromPrimitive::from_u32(data_id).unwrap());
+    }
     let mut data_list_remainder = &input[header.data_list_table_offset.clone() as usize..];
     let mut data_list_table: Vec<DataListItem> = vec![];
     for _ in 0..header.data_count {
