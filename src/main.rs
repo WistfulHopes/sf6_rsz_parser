@@ -2,14 +2,6 @@ use std::env;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::process::exit;
-use indicatif::ProgressBar;
-use nom::{
-    combinator::*,
-    sequence::tuple,
-    IResult,
-};
-use nom::multi::count;
-use nom::number::complete::{le_i32, le_u32, le_u64};
 use serde::{Deserialize, Serialize};
 use crate::rsz::{parse_rsz, RSZ};
 use crate::rsz::json_parser::parse_json;

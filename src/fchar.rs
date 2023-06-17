@@ -1,8 +1,4 @@
-﻿use std::env;
-use std::fs::File;
-use std::io::{BufReader, Read};
-use std::process::exit;
-use indicatif::ProgressBar;
+﻿use indicatif::ProgressBar;
 use nom::{
     combinator::*,
     sequence::tuple,
