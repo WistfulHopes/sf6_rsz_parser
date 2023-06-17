@@ -485,7 +485,7 @@ pub fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     let (mut remainder, action_list_table) = parse_action_list_table(remainder).unwrap();
     println!("Header parsed!");
     println!("Parsing style data...");
-    let (_, style_data) = parse_rsz(input, (&action_list_table.action_rsz + &action_list_table.style_data_offset) as usize, true).unwrap();
+    let (_, style_data) = parse_rsz(input, action_list_table.action_rsz as usize, true).unwrap();
     println!("Style data parsed!");
     let mut action_list: Vec<ActionList> = vec![];
     println!("Parsing action list...");
