@@ -158,7 +158,7 @@ dependencies = [
 
 [[package]]
 name = "sf6_rsz_parser"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "indicatif",
  "lazy_static",
