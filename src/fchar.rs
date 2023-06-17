@@ -389,7 +389,7 @@ fn parse_data_list_item(input: &[u8], offset: usize) -> IResult<&[u8], DataListI
     }))
 }
 
-#[derive(Serialize, Deserialize, FromPrimitive, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, FromPrimitive, PartialEq, Eq, Clone)]
 pub enum DataId {
     AttackDataParams = 0,
     ChargeParamSub = 1,
