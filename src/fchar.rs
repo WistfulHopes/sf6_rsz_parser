@@ -105,7 +105,7 @@ fn parse_fchar_header(input: &[u8]) -> IResult<&[u8], CharacterAssetHeader>
 #[derive(Serialize, Deserialize, Default)]
 pub struct ActionListTable {
     pub action_list_table_offset: u64,
-    pub style_data_offset: u64,
+    pub style_data_offset: Vec<u64>,
     pub action_list_offset: u64,
     pub action_rsz: u64,
     pub data_id_table_offset: u64,
@@ -113,38 +113,49 @@ pub struct ActionListTable {
     pub object_count: u32,
 }
 
-fn parse_action_list_table(input: &[u8]) -> IResult<&[u8], ActionListTable>
+fn parse_action_list_table(input: &[u8], style_count: u32) -> IResult<&[u8], ActionListTable>
 {
-    map(
-        tuple((
-            le_u64,
-            le_u64,
-            le_u64,
-            le_u64,
-            le_u64,
-            le_u32,
-            le_u32,
-        )),
-        |(
-             action_list_table_offset,
-             style_data_offset,
-             action_list_offset,
-             action_rsz,
-             data_id_table_offset,
-             action_list_count,
-             object_count,
-         )|{
-            ActionListTable {
-                action_list_table_offset,
-                style_data_offset,
-                action_list_offset,
-                action_rsz,
-                data_id_table_offset,
-                action_list_count,
-                object_count,
-            }
-        }
-    )(input)
+    let (remainder, action_list_table_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(input).unwrap();
+    let (remainder, style_data_offset) = count(le_u64::<&[u8], nom::error::Error<&[u8]>>, style_count as usize - 1)(remainder).unwrap();
+    let (remainder, action_list_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    let (remainder, action_rsz) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    let (remainder, data_id_table_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    let (remainder, action_list_count) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    let (remainder, object_count) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    return Ok((remainder, ActionListTable {
+        action_list_table_offset,
+        style_data_offset,
+        action_list_offset,
+        action_rsz,
+        data_id_table_offset,
+        action_list_count,
+        object_count,
+    }))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct StyleData {
+    #[serde(skip)]
+    pub data_start_offset: u64,
+    #[serde(skip)]
+    pub rsz_offset: u64,
+    #[serde(skip)]
+    pub data_end_offset: u64,
+    pub rsz: RSZ,
+}
+
+fn parse_style_data(input: &[u8], offset: usize) -> IResult<&[u8], StyleData> {
+    let remainder = &input[offset..];
+    let (remainder, data_start_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    let (remainder, rsz_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    let (remainder, data_end_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    let (_, rsz) = parse_rsz(input, rsz_offset as usize, true).unwrap();
+    return Ok((remainder, StyleData{
+        data_start_offset,
+        rsz_offset,
+        data_end_offset,
+        rsz
+    }))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -435,7 +446,8 @@ pub struct CharacterAsset {
     pub parent_id_table: Vec<i32>,
     #[serde(skip)]
     pub action_list_table: ActionListTable,
-    pub style_data: RSZ,
+    pub default_style_data: RSZ,
+    pub style_data: Vec<StyleData>,
     pub action_list: Vec<ActionList>,
     pub data_id_table: Vec<DataId>,
     pub data_list_table: Vec<DataListItem>,
@@ -445,16 +457,21 @@ pub struct CharacterAsset {
 pub fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     println!("Parsing fchar file...");
     let (remainder, header) = parse_fchar_header(input).unwrap();
-    let (remainder, id_table) = count(le_i32::<&[u8], nom::error::Error<&[u8]>>, header.object_count as usize)(remainder).unwrap();
-    let (mut remainder, parent_id_table) = count(le_i32::<&[u8], nom::error::Error<&[u8]>>, header.object_count as usize)(remainder).unwrap();
+    let (remainder, id_table) = count(le_i32::<&[u8], nom::error::Error<&[u8]>>, header.style_count as usize)(remainder).unwrap();
+    let (mut remainder, parent_id_table) = count(le_i32::<&[u8], nom::error::Error<&[u8]>>, header.style_count as usize)(remainder).unwrap();
     let alignment_remainder = (16 - (input.len() - remainder.len()) % 16) % 16;
     if alignment_remainder != 0 {
         remainder = &remainder[alignment_remainder..];
     }
-    let (mut remainder, action_list_table) = parse_action_list_table(remainder).unwrap();
+    let (mut remainder, action_list_table) = parse_action_list_table(remainder, header.style_count).unwrap();
     println!("Header parsed!");
     println!("Parsing style data...");
-    let (_, style_data) = parse_rsz(input, action_list_table.action_rsz as usize, true).unwrap();
+    let (_, default_style_data) = parse_rsz(input, action_list_table.action_rsz as usize, true).unwrap();
+    let mut style_data: Vec<StyleData> = vec![];
+    for n in 0..header.style_count - 1 {
+        let (_, style_data_inst) = parse_style_data(input, action_list_table.style_data_offset[n as usize] as usize).unwrap();
+        style_data.push(style_data_inst);
+    }
     println!("Style data parsed!");
     let mut action_list: Vec<ActionList> = vec![];
     println!("Parsing action list...");
@@ -497,6 +514,7 @@ pub fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
         id_table,
         parent_id_table,
         action_list_table,
+        default_style_data,
         style_data,
         action_list,
         data_id_table,
