@@ -1,5 +1,4 @@
-﻿use indicatif::ProgressBar;
-use nom::{
+﻿use nom::{
     combinator::*,
     sequence::tuple,
     IResult,
@@ -151,7 +150,7 @@ fn parse_style_data(input: &[u8], offset: usize) -> IResult<&[u8], StyleData> {
     let (remainder, data_start_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
     let (remainder, rsz_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
     let (remainder, data_end_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
-    let (_, rsz) = parse_rsz(input, rsz_offset as usize, true).unwrap();
+    let (_, rsz) = parse_rsz(input, rsz_offset as usize).unwrap();
     return Ok((remainder, StyleData{
         data_start_offset,
         rsz_offset,
@@ -314,7 +313,7 @@ pub struct Object {
 
 fn parse_object(input: &[u8], offset: usize) -> IResult<&[u8], Object> {
     let (remainder_new, info) = parse_object_info(input, offset).unwrap();
-    let (_, action) = parse_rsz(input, info.rsz_offset.clone() as usize,false).unwrap();
+    let (_, action) = parse_rsz(input, info.rsz_offset.clone() as usize).unwrap();
 
     Ok((remainder_new, Object{
         info,
@@ -331,7 +330,7 @@ pub struct ActionList {
 
 fn parse_action_list(input: &[u8], offset: usize) -> IResult<&[u8], ActionList> {
     let (_, info) = parse_action_list_info(input, offset).unwrap();
-    let (remainder_new, action) = parse_rsz(input, info.rsz_offset.clone() as usize,false).unwrap();
+    let (remainder_new, action) = parse_rsz(input, info.rsz_offset.clone() as usize).unwrap();
     let mut objects: Vec<Object> = vec![];
     for n in 0..info.object_count.clone() {
         let offset = (info.data_start_offset.clone() + 8 * n as u64) as usize;
@@ -393,7 +392,7 @@ fn parse_data_list_item(input: &[u8], offset: usize) -> IResult<&[u8], DataListI
     let data_remainder = &input[data_list_offset as usize..];
     let (data_remainder, info) = parse_data_list_info(data_remainder).unwrap();
     let (_, data_ids) = count(le_u32::<&[u8], nom::error::Error<&[u8]>>, info.data_count as usize)(data_remainder).unwrap();
-    let (_, data_rsz) = parse_rsz(input, info.rsz_offset.clone() as usize,false).unwrap();
+    let (_, data_rsz) = parse_rsz(input, info.rsz_offset.clone() as usize).unwrap();
     Ok((remainder, DataListItem{
         data_list_offset,
         info,
@@ -469,7 +468,7 @@ pub fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     let (mut remainder, action_list_table) = parse_action_list_table(input, offset, header.style_count).unwrap();
     println!("Header parsed!");
     println!("Parsing style data...");
-    let (_, default_style_data) = parse_rsz(input, action_list_table.action_rsz as usize, true).unwrap();
+    let (_, default_style_data) = parse_rsz(input, action_list_table.action_rsz as usize).unwrap();
     let mut style_data: Vec<StyleData> = vec![];
     for n in 0..header.style_count - 1 {
         let (_, style_data_inst) = parse_style_data(input, action_list_table.style_data_offset[n as usize] as usize).unwrap();
@@ -478,15 +477,12 @@ pub fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     println!("Style data parsed!");
     let mut action_list: Vec<ActionList> = vec![];
     println!("Parsing action list...");
-    let bar = ProgressBar::new(action_list_table.action_list_count.clone() as u64);
     for _ in 0..action_list_table.action_list_count {
         let offset = input.len() - remainder.len();
         let (_, action) = parse_action_list(input, offset).unwrap();
         action_list.push(action);
         remainder = &remainder[8..];
-        bar.inc(1);
     }
-    bar.finish();
     println!("Action list parsed!");
 
     println!("Parsing data tables...");
@@ -507,7 +503,7 @@ pub fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     println!("Data tables parsed!");
 
     println!("Parsing personal data...");
-    let (_, personal_data) = parse_rsz(input, header.object_table_rsz_offset.clone() as usize, false).unwrap();
+    let (_, personal_data) = parse_rsz(input, header.object_table_rsz_offset.clone() as usize).unwrap();
     println!("Personal data parsed!");
 
     println!("Fchar file parsed!");

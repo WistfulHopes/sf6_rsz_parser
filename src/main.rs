@@ -76,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nArguments not provided! The argument should be the file to parse.")
     }
 
-    let json_bytes = include_bytes_zstd!("rszsf6.json", 19);
+    let json_bytes = include_bytes_zstd!("rszsf6.json", 9);
     
     parse_json(json_bytes)?;
     
@@ -87,8 +87,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fchar_file = fchar::parse_fchar(&buffer).unwrap().1;
     let serialized_fchar = serde_json::to_string_pretty(&fchar_file).unwrap();
     println!("Writing fchar to json...");
+    
+    let mut json_name = args[1].clone();
+    json_name.push_str(".json");
 
-    std::fs::write(&args[1].push_str(".json"), serialized_fchar)?;
+    std::fs::write(json_name, serialized_fchar)?;
     println!("Complete!");
 
     Ok(())

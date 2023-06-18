@@ -1,4 +1,3 @@
-use indicatif::ProgressBar;
 use nom::bytes::complete::take;
 use nom::combinator::map;
 use nom::IResult;
@@ -716,7 +715,7 @@ pub struct RSZ {
     pub data: Vec<RSZData>,
 }
 
-pub fn parse_rsz(input: &[u8], offset: usize, log: bool) -> IResult<&[u8], RSZ> {
+pub fn parse_rsz(input: &[u8], offset: usize) -> IResult<&[u8], RSZ> {
     let orig_remainder = &input[offset..];
     let (orig_remainder, header) = parse_rsz_header(orig_remainder).unwrap();
     let (orig_remainder, object_table) = count(le_i32::<&[u8], nom::error::Error<&[u8]>>, header.object_count as usize)(orig_remainder).unwrap();
@@ -727,28 +726,11 @@ pub fn parse_rsz(input: &[u8], offset: usize, log: bool) -> IResult<&[u8], RSZ> 
     }
     let (mut remainder, userdata_infos) = count(parse_userdata_info, header.userdata_count as usize)(remainder).unwrap();
     let mut data: Vec<RSZData> = vec![];
-    if log {
-        println!("Parsing RSZ data...");
-        let bar = ProgressBar::new(header.instance_count.clone() as u64);
-        for n in 1..header.instance_count {
-            let new_offset = input.len() - remainder.len();
-            let (remainder_new, cur_data) = parse_rsz_data(input, new_offset, instance_infos[n as usize].hash.clone()).unwrap();
-            data.push(cur_data);
-            remainder = remainder_new;
-            if log {
-                bar.inc(1);
-            }
-        }
-        bar.finish();
-        println!("RSZ data parsed!");
-    }
-    else {
-        for n in 1..header.instance_count {
-            let new_offset = input.len() - remainder.len();
-            let (remainder_new, cur_data) = parse_rsz_data(input, new_offset, instance_infos[n as usize].hash.clone()).unwrap();
-            data.push(cur_data);
-            remainder = remainder_new;
-        }
+    for n in 1..header.instance_count {
+        let new_offset = input.len() - remainder.len();
+        let (remainder_new, cur_data) = parse_rsz_data(input, new_offset, instance_infos[n as usize].hash.clone()).unwrap();
+        data.push(cur_data);
+        remainder = remainder_new;
     }
 
     Ok((remainder,
