@@ -113,10 +113,12 @@ pub struct ActionListTable {
     pub object_count: u32,
 }
 
-fn parse_action_list_table(input: &[u8], style_count: u32) -> IResult<&[u8], ActionListTable>
+fn parse_action_list_table(input: &[u8], offset: usize, style_count: u32) -> IResult<&[u8], ActionListTable>
 {
-    let (remainder, action_list_table_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(input).unwrap();
-    let (remainder, style_data_offset) = count(le_u64::<&[u8], nom::error::Error<&[u8]>>, style_count as usize - 1)(remainder).unwrap();
+    let remainder = &input[offset..];
+    let (remainder, action_list_table_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    let (_, style_data_offset) = count(le_u64::<&[u8], nom::error::Error<&[u8]>>, style_count as usize - 1)(remainder).unwrap();
+    let remainder = &input[action_list_table_offset as usize..];
     let (remainder, action_list_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
     let (remainder, action_rsz) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
     let (remainder, data_id_table_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
@@ -463,7 +465,8 @@ pub fn parse_fchar(input: &[u8]) -> IResult<&[u8], CharacterAsset> {
     if alignment_remainder != 0 {
         remainder = &remainder[alignment_remainder..];
     }
-    let (mut remainder, action_list_table) = parse_action_list_table(remainder, header.style_count).unwrap();
+    let offset = input.len() - remainder.len();
+    let (mut remainder, action_list_table) = parse_action_list_table(input, offset, header.style_count).unwrap();
     println!("Header parsed!");
     println!("Parsing style data...");
     let (_, default_style_data) = parse_rsz(input, action_list_table.action_rsz as usize, true).unwrap();
