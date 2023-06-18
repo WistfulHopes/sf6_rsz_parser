@@ -1,10 +1,9 @@
 use std::env;
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::process::exit;
 use serde::{Deserialize, Serialize};
-use crate::rsz::{parse_rsz, RSZ};
 use crate::rsz::json_parser::parse_json;
+use include_bytes_zstd::include_bytes_zstd;
 
 mod fchar;
 mod rsz;
@@ -71,14 +70,15 @@ struct RSZFile
     standard_gameobject_info: Vec<StandardGameObjectInfo>,
 }
 
-fn main() -> std::io::Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
-    if args.len() <= 3 {
-        println!("\nNot enough arguments! First argument should be the file to parse.\nSecond argument should be the RSZ json dump.\nThird argument should be the output json.");
-        exit(1)
+    if args.len() <= 1 {
+        println!("\nArguments not provided! The argument should be the file to parse.")
     }
+
+    let json_bytes = include_bytes_zstd!("rszsf6.json", 19);
     
-    parse_json(args[2].clone())?;
+    parse_json(json_bytes)?;
     
     let mut reader = BufReader::with_capacity(0x3fffff,File::open(&args[1]).unwrap());
     let mut buffer: Vec<u8> = vec![];
@@ -88,7 +88,7 @@ fn main() -> std::io::Result<()> {
     let serialized_fchar = serde_json::to_string_pretty(&fchar_file).unwrap();
     println!("Writing fchar to json...");
 
-    std::fs::write(&args[3], serialized_fchar)?;
+    std::fs::write(&args[1].push_str(".json"), serialized_fchar)?;
     println!("Complete!");
 
     Ok(())

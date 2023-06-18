@@ -1,4 +1,4 @@
-use std::{fmt, fs::File, io::Read};
+use std::fmt;
 use serde_json::{Value, json};
 use std::sync::Mutex;
 use lazy_static::lazy_static;
@@ -288,13 +288,10 @@ pub fn get_rsz_class_name(class_hash: &u32) -> RSZResult<String>
     }
 }
 
-pub fn parse_json(path: String) -> std::io::Result<()> {
-    let mut file = File::open(&path)?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-
+pub fn parse_json(json_bytes: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+    let contents = std::str::from_utf8(&json_bytes[..])?;
     let mut json = JSON.lock().unwrap();
-    *json = serde_json::from_str(&contents)?;
+    *json = serde_json::from_str(contents)?;
     
     Ok(())
 }
