@@ -1,12 +1,12 @@
 [package]
 name = "sf6_rsz_parser"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nom = "7"
+nom = { version = "7" }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 lazy_static = "1.4.0"

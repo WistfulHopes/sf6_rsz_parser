@@ -1,4 +1,4 @@
-use nom::bytes::complete::take;
+use nom::bytes::complete::{take, take_until};
 use nom::combinator::map;
 use nom::IResult;
 use nom::multi::count;
@@ -110,7 +110,6 @@ pub struct GUID {
 #[derive(Serialize, Deserialize)]
 pub enum RSZValue {
     Object(RSZData),
-    UserData(RSZUserDataInfo),
     Bool(bool),
     Float(f32),
     Double(f64),
@@ -164,18 +163,17 @@ fn get_value(input: &[u8], offset: usize, field_type: TypeIDs, hash: u32, n: usi
     let value = match field_type
     {
         TypeIDs::Resource => {
-            /*let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
-            if alignment_remainder != 0 {
-                remainder = &remainder[alignment_remainder..];
-            }*/
-            let mut data: &[u8] = &[];
-            (remainder, data) = take::<usize, &[u8], nom::error::Error<&[u8]>>(field_size)(remainder).unwrap();
-            RSZValue::Unk(data.to_vec())
+            let mut uint = 0u32;
+            (remainder, uint) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+            let (_, mut string) = take_str_of_size(remainder, uint * 2).unwrap_or((remainder, "".to_string()));
+            string = string.replace("\u{0}", "");
+            remainder = &remainder[uint as usize * 2..];
+            RSZValue::String(string)
         }
         TypeIDs::UserData => {
-            let (remaining_new, data) = parse_userdata_info(remainder).unwrap();
-            remainder = remaining_new;
-            RSZValue::UserData(data)
+            let mut int = 0i32;
+            (remainder, int) = le_i32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+            RSZValue::Int32(int.clone())
         }
         TypeIDs::Bool => {
             let mut bool = 0u8;
@@ -233,11 +231,12 @@ fn get_value(input: &[u8], offset: usize, field_type: TypeIDs, hash: u32, n: usi
             RSZValue::Double(double.clone())
         }
         TypeIDs::String => {
-            let mut size = 0u32;
-            (remainder, size) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
-            let mut data: &[u8] = &[];
-            (remainder, data) = take::<usize, &[u8], nom::error::Error<&[u8]>>((size * 2) as usize)(remainder).unwrap();
-            RSZValue::String(std::str::from_utf8(data).unwrap().to_owned())
+            let mut uint = 0u32;
+            (remainder, uint) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+            let (_, mut string) = take_str_of_size(remainder, uint * 2).unwrap_or((remainder, "".to_string()));
+            string = string.replace("\u{0}", "");
+            remainder = &remainder[uint as usize * 2..];
+            RSZValue::String(string)
         }
         TypeIDs::MBString => {
             /*let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 4;
@@ -556,7 +555,7 @@ fn get_value(input: &[u8], offset: usize, field_type: TypeIDs, hash: u32, n: usi
             RSZValue::Unk(data.to_vec())
         }
     };
-    if field_type != TypeIDs::String {
+    if field_type != TypeIDs::String && field_type != TypeIDs::Resource {
         Ok((&base_remainder[field_size..], value))
     }
     else {
@@ -583,10 +582,6 @@ fn parse_rsz_data(input: &[u8], offset: usize, hash: u32) -> IResult<&[u8], RSZD
             let mut count: u32 = 0;
             (new_remainder, count) = le_u32::<&[u8], nom::error::Error<&[u8]>>(new_remainder).unwrap();
             let mut values: Vec<RSZValue> = vec![];
-            if count > 1000
-            {
-                println!("Testing for bugs");
-            }
             for _ in 0..count {
                 let offset = input.len() - new_remainder.len();
                 let (value_remainder, value) = get_value(input, offset, field_type, hash.clone(), n.clone(), field_alignment.clone()).unwrap();
@@ -621,27 +616,122 @@ fn parse_rsz_data(input: &[u8], offset: usize, hash: u32) -> IResult<&[u8], RSZD
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct RSZUserDataInfo {
+pub struct UserDataInfo {
     pub instance_id: u32,
     pub type_id: u32,
+    #[serde(skip)]
+    pub str_offset: u64,
+    pub string: String,
 }
 
-fn parse_userdata_info(input: &[u8]) -> IResult<&[u8], RSZUserDataInfo> {
+pub fn parse_userdata_info(input: &[u8], offset: usize) -> IResult<&[u8], UserDataInfo> {
+    let remainder = &input[offset..];
+    let (remainder, instance_id) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    let (remainder, type_id) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    let (remainder, str_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+    
+    let str_remainder = &input[str_offset as usize..];
+    let (_, mut string) = map(take_until::<&str, &[u8], nom::error::Error<&[u8]>>("\0\0"), lossy_to_str)(str_remainder).unwrap();
+    string = string.replace("\u{0}", "");
+
+    Ok((remainder, UserDataInfo {
+        instance_id,
+        type_id,
+        str_offset,
+        string,
+    }))
+}
+
+fn take_str_of_size(i: &[u8], size: u32) -> IResult<&[u8], String> {
+    let (i, bytes) = take(size)(i)?;
+    let (_, parsed_string) = map(take(size), lossy_to_str)(bytes)?;
+
+    Ok((i, parsed_string))
+}
+
+fn lossy_to_str(i: &[u8]) -> String {
+    String::from_utf8_lossy(i).to_string()
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GameObjectInfo {
+    pub id: i32,
+    pub parent_id: i32,
+    pub component_count: i32,
+}
+
+pub fn parse_gobject_info(input: &[u8]) -> IResult<&[u8], GameObjectInfo> {
     map(
         tuple((
-            le_u32,
-            le_u32,
+            le_i32,
+            le_i32,
+            le_i32,
         )),
         |(
-             instance_id,
-             type_id,
+             id,
+             parent_id,
+             component_count,
          )|{
-            RSZUserDataInfo {
-                instance_id,
-                type_id,
+            GameObjectInfo {
+                id,
+                parent_id,
+                component_count,
             }
         }
     )(input)
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GameObjectRefInfo {
+    pub object_id: i32,
+    pub property_id: i32,
+    pub array_index: i32,
+    pub target_id: i32,
+}
+
+pub fn parse_gobject_ref_info(input: &[u8]) -> IResult<&[u8], GameObjectRefInfo> {
+    map(
+        tuple((
+            le_i32,
+            le_i32,
+            le_i32,
+            le_i32,
+        )),
+        |(
+             object_id,
+             property_id,
+             array_index,
+             target_id,
+         )|{
+            GameObjectRefInfo {
+                object_id,
+                property_id,
+                array_index,
+                target_id,
+            }
+        }
+    )(input)
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ResourceInfo {
+    #[serde(skip)]
+    pub str_offset: u64,
+    pub string: String,
+}
+
+pub fn parse_resource_info(input: &[u8], offset: usize) -> IResult<&[u8], ResourceInfo> {
+    let remainder = &input[offset..];
+    let (remainder, str_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+
+    let str_remainder = &input[str_offset as usize..];
+    let (_, mut string) = map(take_until::<&str, &[u8], nom::error::Error<&[u8]>>("\0\0"), lossy_to_str)(str_remainder).unwrap();
+    string = string.replace("\u{0}", "");
+
+    Ok((remainder, ResourceInfo {
+        str_offset,
+        string,
+    }))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -711,7 +801,7 @@ pub struct RSZ {
     pub object_table: Vec<i32>,
     #[serde(skip)]
     pub instance_infos: Vec<InstanceInfo>,
-    pub userdata_infos: Vec<RSZUserDataInfo>,
+    pub userdata_infos: Vec<UserDataInfo>,
     pub data: Vec<RSZData>,
 }
 
@@ -724,9 +814,21 @@ pub fn parse_rsz(input: &[u8], offset: usize) -> IResult<&[u8], RSZ> {
     if alignment_remainder != 0 {
         remainder = &remainder[alignment_remainder..];
     }
-    let (mut remainder, userdata_infos) = count(parse_userdata_info, header.userdata_count as usize)(remainder).unwrap();
+    let mut userdata_infos: Vec<UserDataInfo> = vec![];
+    for _ in 0..header.userdata_count {
+        let offset = input.len() - remainder.len();
+        let (new_remainder, userdata_info) = parse_userdata_info(input, offset).unwrap();
+        remainder = new_remainder;
+        userdata_infos.push(userdata_info);
+    }
     let mut data: Vec<RSZData> = vec![];
-    for n in 1..header.instance_count {
+    remainder = &input[header.data_offset as usize + offset..];
+    'outer: for n in 1..header.instance_count {
+        for userdata in &userdata_infos {
+            if n == userdata.instance_id as i32 {
+                continue 'outer
+            }
+        }
         let new_offset = input.len() - remainder.len();
         let (remainder_new, cur_data) = parse_rsz_data(input, new_offset, instance_infos[n as usize].hash.clone()).unwrap();
         data.push(cur_data);

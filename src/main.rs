@@ -7,21 +7,7 @@ use include_bytes_zstd::include_bytes_zstd;
 
 mod fchar;
 mod rsz;
-
-#[derive(Serialize, Deserialize)]
-struct Prefab {
-    magic: u32,
-    info_count: i32,
-    resource_count: i32,
-    gameobject_ref_info_count: i32,
-    userdata_count: i32,
-    #[serde(skip)]
-    reserved: i32,
-    gameobject_ref_info_tbl: u64,
-    resource_info_tbl: u64,
-    userdata_info_tbl: u64,
-    data_offset: u64,
-}
+mod prefab;
 
 #[derive(Serialize, Deserialize)]
 struct UserData {
@@ -32,19 +18,6 @@ struct UserData {
     resource_info_tbl: u64,
     userdata_info_tbl: u64,
     data_offset: u64,
-}
-
-#[derive(Serialize, Deserialize)]
-enum HeaderType {
-    Prefab(Prefab),
-    UserData(UserData),
-}
-
-#[derive(Serialize, Deserialize)]
-struct PrefabGameObjectInfo {
-    id: i32,
-    parent_id: i32,
-    component_count: i32,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -62,14 +35,6 @@ struct UserDataInfo {
     crc: u32,
 }
 
-#[derive(Serialize, Deserialize)]
-struct RSZFile
-{
-    header: HeaderType,
-    prefab_gameobject_info: Vec<PrefabGameObjectInfo>,
-    standard_gameobject_info: Vec<StandardGameObjectInfo>,
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
     if args.len() <= 1 {
@@ -80,19 +45,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     parse_json(json_bytes)?;
     
-    let mut reader = BufReader::with_capacity(0x3fffff,File::open(&args[1]).unwrap());
+    let mut reader = BufReader::with_capacity(0x7fffff,File::open(&args[1]).unwrap());
     let mut buffer: Vec<u8> = vec![];
     reader.read_to_end(&mut buffer).unwrap();
     
-    let fchar_file = fchar::parse_fchar(&buffer).unwrap().1;
-    let serialized_fchar = serde_json::to_string_pretty(&fchar_file).unwrap();
-    println!("Writing fchar to json...");
-    
-    let mut json_name = args[1].clone();
-    json_name.push_str(".json");
+    if args[1].ends_with("fchar.17")
+    {
+        let fchar_file = fchar::parse_fchar(&buffer).unwrap().1;
+        let serialized_fchar = serde_json::to_string_pretty(&fchar_file).unwrap();
+        println!("Writing fchar to json...");
 
-    std::fs::write(json_name, serialized_fchar)?;
-    println!("Complete!");
+        let mut json_name = args[1].clone();
+        json_name.push_str(".json");
+
+        std::fs::write(json_name, serialized_fchar)?;
+        println!("Complete!");
+    }
+    
+    else if args[1].ends_with("pfb.17")
+    {
+        let pfb_file = prefab::parse_prefab(&buffer).unwrap().1;
+        let serialized_prefab = serde_json::to_string_pretty(&pfb_file).unwrap();
+        
+        println!("Writing prefab to json...");
+
+        let mut json_name = args[1].clone();
+        json_name.push_str(".json");
+
+        std::fs::write(json_name, serialized_prefab)?;
+        println!("Complete!");
+    }
 
     Ok(())
 }
