@@ -41,8 +41,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nArguments not provided! The argument should be the file to parse.")
     }
 
-    let json_bytes = include_bytes_zstd!("rszsf6.json", 9);
-    
+    //let json_bytes = include_bytes_zstd!("rszsf6.json", 9);
+    let json_bytes = match args[1].ends_with(".17"){
+        true=>include_bytes_zstd!("rszsf6.json", 9),
+        false=>include_bytes_zstd!("rszdmc5.json", 9),
+    };
     parse_json(json_bytes)?;
     
     let mut reader = BufReader::with_capacity(0x7fffff,File::open(&args[1]).unwrap());
@@ -64,7 +67,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     else if args[1].ends_with("pfb.17")
     {
-        let pfb_file = prefab::parse_prefab(&buffer).unwrap().1;
+        let pfb_file = prefab::parse_prefab(&buffer,false).unwrap().1;
+        let serialized_prefab = serde_json::to_string_pretty(&pfb_file).unwrap();
+        
+        println!("Writing prefab to json...");
+
+        let mut json_name = args[1].clone();
+        json_name.push_str(".json");
+
+        std::fs::write(json_name, serialized_prefab)?;
+        println!("Complete!");
+    }
+    else if args[1].ends_with("pfb.16")
+    {
+        let pfb_file = prefab::parse_prefab(&buffer,true).unwrap().1;
         let serialized_prefab = serde_json::to_string_pretty(&pfb_file).unwrap();
         
         println!("Writing prefab to json...");
