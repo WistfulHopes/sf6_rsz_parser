@@ -12,115 +12,21 @@ use crate::rsz::{parse_rsz, RSZ, GameObjectInfo, UserDataInfo, GameObjectRefInfo
 #[derive(Serialize, Deserialize)]
 pub struct PrefabHeader {
     #[serde(skip)]
-    pub magic: u32,
-    pub info_count: i32,
-    pub resource_count: i32,
+    pub magic: u32,//File name basically
+    pub info_count: i32, //How many objects the prefab will be spawning
+    pub resource_count: i32, //how many external files are referenced
     pub gameobject_ref_info_count: i32,
-    pub userdata_count: Option<i32>,
+    pub userdata_count: Option<i32>,//how many userdata objects are used in the prefab
     #[serde(skip)]
     pub reserved: Option<i32>,
     #[serde(skip)]
     pub gameobject_ref_info_tbl: u64,
     #[serde(skip)]
-    pub resource_info_tbl: u64,
+    pub resource_info_tbl: u64, //offset of resource table in the file
     #[serde(skip)]
-    pub userdata_info_tbl: Option<u64>,
+    pub userdata_info_tbl: Option<u64>, //offset of userdata table
     #[serde(skip)]
-    pub data_offset: u64,
-}
-#[derive(Serialize, Deserialize)]
-pub struct PrefabHeader16 {
-    #[serde(skip)]
-    pub magic: u32,
-    pub info_count: i32,
-    pub resource_count: i32,
-    pub gameobject_ref_info_count: i32,
-    #[serde(skip)]
-    pub gameobject_ref_info_tbl: u64,
-    #[serde(skip)]
-    pub resource_info_tbl: u64,
-    #[serde(skip)]
-    pub data_offset: u64,
-}
-
-fn parse_prefab_header(input: &[u8],is16version:bool) -> IResult<&[u8], PrefabHeader>
-{
-    if is16version{
-        map(
-            tuple((
-                le_u32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_u64,
-                le_u64,
-                le_u64,
-            )),
-            |(
-                 magic,
-                 info_count,
-                 resource_count,
-                 gameobject_ref_info_count,
-                 gameobject_ref_info_tbl,
-                 resource_info_tbl,
-                 data_offset,
-             )|{
-                PrefabHeader {
-                    magic,
-                    info_count,
-                    resource_count,
-                    gameobject_ref_info_count,
-                    userdata_count:None,
-                    reserved:None,
-                    gameobject_ref_info_tbl,
-                    resource_info_tbl,
-                    userdata_info_tbl:None,
-                    data_offset,
-                }
-            }
-        )(input)
-    }else{
-        map(
-            tuple((
-                le_u32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_u64,
-                le_u64,
-                le_u64,
-                le_u64,
-            )),
-            |(
-                 magic,
-                 info_count,
-                 resource_count,
-                 gameobject_ref_info_count,
-                 userdata_count,
-                 reserved,
-                 gameobject_ref_info_tbl,
-                 resource_info_tbl,
-                 userdata_info_tbl,
-                 data_offset,
-             )|{
-                PrefabHeader {
-                    magic,
-                    info_count,
-                    resource_count,
-                    gameobject_ref_info_count,
-                    userdata_count:Some(userdata_count),
-                    reserved:Some(reserved),
-                    gameobject_ref_info_tbl,
-                    resource_info_tbl,
-                    userdata_info_tbl:Some(userdata_info_tbl),
-                    data_offset,
-                }
-            }
-        )(input)
-    }
-    
+    pub data_offset: u64, //offset of the main RSZ header
 }
 
 fn parse_prefab_header_17(input: &[u8]) -> IResult<&[u8], PrefabHeader>
@@ -166,7 +72,7 @@ fn parse_prefab_header_17(input: &[u8]) -> IResult<&[u8], PrefabHeader>
     )(input)
 }
 
-fn parse_prefab_header_16(input: &[u8]) -> IResult<&[u8], PrefabHeader16>
+fn parse_prefab_header_16(input: &[u8]) -> IResult<&[u8], PrefabHeader>
 {
     map(
         tuple((
@@ -187,13 +93,16 @@ fn parse_prefab_header_16(input: &[u8]) -> IResult<&[u8], PrefabHeader16>
              resource_info_tbl,
              data_offset,
          )|{
-            PrefabHeader16 {
+            PrefabHeader {
                 magic,
                 info_count,
                 resource_count,
                 gameobject_ref_info_count,
+                userdata_count:None,
+                reserved:None,
                 gameobject_ref_info_tbl,
                 resource_info_tbl,
+                userdata_info_tbl:None,
                 data_offset,
             }
         }
@@ -211,11 +120,16 @@ pub struct Prefab {
 }
 
 pub fn parse_prefab(input: &[u8],is16version:bool) -> IResult<&[u8], Prefab> {
-    let (remainder, header) = parse_prefab_header(input,is16version).unwrap();
+    //sf5 has smaller header, skip some values when reading
+    let (remainder, header) = match is16version {
+        true=>parse_prefab_header_16(input).unwrap(),
+        false=>parse_prefab_header_17(input).unwrap(),
+    };
     let (remainder, gameobject_infos) = count(parse_gobject_info, header.info_count as usize)(remainder).unwrap();
     let (mut remainder, gameobject_ref_infos) = count(parse_gobject_ref_info, header.gameobject_ref_info_count as usize)(remainder).unwrap();
     let alignment_remainder = (16 -(input.len() - remainder.len()) % 16) % 16;
-    if alignment_remainder != 0 && !is16version {
+    if alignment_remainder != 0 
+    {
         remainder = &remainder[alignment_remainder..];
     }
     let mut resource_infos: Vec<ResourceInfo> = vec![];
@@ -244,7 +158,7 @@ pub fn parse_prefab(input: &[u8],is16version:bool) -> IResult<&[u8], Prefab> {
         }
     };
     
-    
+    //Main game object parsed here.
     let (remainder, gameobject) = parse_rsz(input, header.data_offset as usize).unwrap();
     
     Ok((

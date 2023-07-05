@@ -736,7 +736,6 @@ pub fn parse_resource_info_sf6(input: &[u8], offset: usize) -> IResult<&[u8], Re
 
 pub fn parse_resource_info_dmc5(input: &[u8], offset: usize) -> IResult<&[u8], ResourceInfo> {
     let remainder = &input[offset..];
-    //let (remainder, str_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
 
     let str_remainder = &input[offset as usize..];
     let (_, mut string) = map(take_until::<&str, &[u8], nom::error::Error<&[u8]>>("\0\0"), lossy_to_str)(str_remainder).unwrap();
