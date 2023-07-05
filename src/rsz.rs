@@ -1,3 +1,4 @@
+use std::io::Write;
 use nom::bytes::complete::{take, take_until};
 use nom::combinator::map;
 use nom::IResult;
@@ -109,7 +110,6 @@ pub struct GUID {
 
 #[derive(Serialize, Deserialize)]
 pub enum RSZValue {
-    Object(RSZData),
     Bool(bool),
     Float(f32),
     Double(f64),
@@ -143,6 +143,7 @@ pub struct RSZField {
     pub name: String,
     pub value_type: TypeIDs,
     pub value: RSZValue,
+    pub alignment: usize,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -162,6 +163,11 @@ fn get_value(input: &[u8], offset: usize, field_type: TypeIDs, hash: u32, n: usi
     let base_remainder = remainder;
     let value = match field_type
     {
+        TypeIDs::Object => {
+            let mut int = 0i32;
+            (remainder, int) = le_i32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
+            RSZValue::Int32(int.clone())
+        }
         TypeIDs::Resource => {
             let mut uint = 0u32;
             (remainder, uint) = le_u32::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
@@ -592,7 +598,8 @@ fn parse_rsz_data(input: &[u8], offset: usize, hash: u32) -> IResult<&[u8], RSZD
             fields.push(RSZField{
                 name: get_field_name(&hash, &n),
                 value_type: field_type,
-                value
+                value,
+                alignment: field_alignment.clone(),
             });
             remainder = new_remainder;
         }
@@ -603,7 +610,8 @@ fn parse_rsz_data(input: &[u8], offset: usize, hash: u32) -> IResult<&[u8], RSZD
                 RSZField{
                     name: get_field_name(&hash, &n),
                     value_type: field_type,
-                    value
+                    value,
+                    alignment: field_alignment.clone(),
                 }
             );
             remainder = new_remainder;
@@ -613,6 +621,142 @@ fn parse_rsz_data(input: &[u8], offset: usize, hash: u32) -> IResult<&[u8], RSZD
         name,
         fields,
     }))
+}
+
+fn write_rsz_value(value: &RSZValue, bytes: &mut Vec<u8>) {
+    match value {
+        RSZValue::Bool(value) => {
+            bytes.write(&[value.clone() as u8]).unwrap();
+        }
+        RSZValue::Float(value) => {
+            bytes.write(&value.to_le_bytes()[0..3]).unwrap();
+        }
+        RSZValue::Double(value) => {
+            bytes.write(&value.to_le_bytes()[0..7]).unwrap();
+        }
+        RSZValue::PlaneXZ(value) => {
+            bytes.write(&value.x.to_le_bytes()[0..3]).unwrap();
+            bytes.write(&value.z.to_le_bytes()[0..3]).unwrap();
+        }
+        RSZValue::Float2(value) => {
+            bytes.write(&value.x.to_le_bytes()[0..3]).unwrap();
+            bytes.write(&value.y.to_le_bytes()[0..3]).unwrap();
+        }
+        RSZValue::Float3(value) => {
+            bytes.write(&value.x.to_le_bytes()[0..3]).unwrap();
+            bytes.write(&value.y.to_le_bytes()[0..3]).unwrap();
+            bytes.write(&value.z.to_le_bytes()[0..3]).unwrap();
+        }
+        RSZValue::Float4(value) => {
+            bytes.write(&value.x.to_le_bytes()[0..3]).unwrap();
+            bytes.write(&value.y.to_le_bytes()[0..3]).unwrap();
+            bytes.write(&value.z.to_le_bytes()[0..3]).unwrap();
+            bytes.write(&value.w.to_le_bytes()[0..3]).unwrap();
+        }
+        RSZValue::Fixed(value) => {
+            let fix1: u32 = (value * 65536.0) as u32;
+            bytes.write(&fix1.to_le_bytes()[0..3]).unwrap();
+        }
+        RSZValue::GUID(value) => {
+            bytes.write(&value.uuid[0..15]).unwrap();
+        }
+        RSZValue::Int8(value) => {
+            bytes.write(&(value.clone() as u8).to_le_bytes()[0..1]).unwrap();
+        }
+        RSZValue::Int16(value) => {
+            bytes.write(&(value.clone() as u16).to_le_bytes()[0..2]).unwrap();
+        }
+        RSZValue::Int32(value) => {
+            bytes.write(&(value.clone() as u32).to_le_bytes()[0..4]).unwrap();
+        }
+        RSZValue::Int64(value) => {
+            bytes.write(&(value.clone() as u64).to_le_bytes()[0..8]).unwrap();
+        }
+        RSZValue::UInt8(value) => {
+            bytes.write(&value.to_le_bytes()[0..1]).unwrap();
+        }
+        RSZValue::UInt16(value) => {
+            bytes.write(&value.to_le_bytes()[0..2]).unwrap();
+        }
+        RSZValue::UInt32(value) => {
+            bytes.write(&value.to_le_bytes()[0..4]).unwrap();
+        }
+        RSZValue::UInt64(value) => {
+            bytes.write(&value.to_le_bytes()[0..8]).unwrap();
+        }
+        RSZValue::Int2(value) => {
+            bytes.write(&(value.x as u32).to_le_bytes()[0..4]).unwrap();
+            bytes.write(&(value.y as u32).to_le_bytes()[0..4]).unwrap();
+        }
+        RSZValue::Int3(value) => {
+            bytes.write(&(value.x as u32).to_le_bytes()[0..4]).unwrap();
+            bytes.write(&(value.y as u32).to_le_bytes()[0..4]).unwrap();
+            bytes.write(&(value.z as u32).to_le_bytes()[0..4]).unwrap();
+        }
+        RSZValue::Int4(value) => {
+            bytes.write(&(value.x as u32).to_le_bytes()[0..4]).unwrap();
+            bytes.write(&(value.y as u32).to_le_bytes()[0..4]).unwrap();
+            bytes.write(&(value.z as u32).to_le_bytes()[0..4]).unwrap();
+            bytes.write(&(value.w as u32).to_le_bytes()[0..4]).unwrap();
+        }
+        RSZValue::UInt2(value) => {
+            bytes.write(&value.x.to_le_bytes()[0..4]).unwrap();
+            bytes.write(&value.y.to_le_bytes()[0..4]).unwrap();
+        }
+        RSZValue::UInt3(value) => {
+            bytes.write(&value.x.to_le_bytes()[0..4]).unwrap();
+            bytes.write(&value.y.to_le_bytes()[0..4]).unwrap();
+            bytes.write(&value.z.to_le_bytes()[0..4]).unwrap();
+        }
+        RSZValue::UInt4(value) => {
+            bytes.write(&value.x.to_le_bytes()[0..4]).unwrap();
+            bytes.write(&value.y.to_le_bytes()[0..4]).unwrap();
+            bytes.write(&value.z.to_le_bytes()[0..4]).unwrap();
+            bytes.write(&value.w.to_le_bytes()[0..4]).unwrap();
+        }
+        RSZValue::String(value) => {
+            let strlen = value.len() + 1;
+            bytes.write(&(strlen as u32).to_le_bytes()[0..4]).unwrap();
+            for char in value.chars() {
+                bytes.write(&[char as u8]).unwrap();
+                bytes.write(&[0]).unwrap();
+            }
+            bytes.write(&[0; 2]).unwrap();
+        }
+        RSZValue::Unk(value) => {
+            bytes.write(&value[..]).unwrap();
+        }
+        RSZValue::List(values) => {
+            bytes.write(&(values.len() as u32).to_le_bytes()[0..4]).unwrap();
+            for value in values {
+                write_rsz_value(value, bytes);
+            }
+        }
+    }
+}
+
+fn write_rsz_data(data: &RSZData, bytes: &mut Vec<u8>) {
+    for field in &data.fields {
+        if let RSZValue::List(list) = &field.value {
+            bytes.write(&(list.len() as u32).to_le_bytes()[0..4]).unwrap();
+            for value in list {
+                let alignment = (16 - bytes.len() % 16) % field.alignment;
+                if alignment != 0 {
+                    let mut null_bytes: Vec<u8> = vec![0; alignment];
+                    bytes.append(&mut null_bytes);
+                }
+                write_rsz_value(&value, bytes);
+            }
+        }
+        else {
+            let alignment = (16 - bytes.len() % 16) % field.alignment;
+            if alignment != 0 {
+                let mut null_bytes: Vec<u8> = vec![0; alignment];
+                bytes.append(&mut null_bytes);
+            }
+            write_rsz_value(&field.value, bytes);
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -821,7 +965,7 @@ pub fn parse_rsz(input: &[u8], offset: usize) -> IResult<&[u8], RSZ> {
         remainder = new_remainder;
         userdata_infos.push(userdata_info);
     }
-    let mut data: Vec<RSZData> = vec![];
+    let mut datas: Vec<RSZData> = vec![];
     remainder = &input[header.data_offset as usize + offset..];
     'outer: for n in 1..header.instance_count {
         for userdata in &userdata_infos {
@@ -831,17 +975,17 @@ pub fn parse_rsz(input: &[u8], offset: usize) -> IResult<&[u8], RSZ> {
         }
         let new_offset = input.len() - remainder.len();
         let (remainder_new, cur_data) = parse_rsz_data(input, new_offset, instance_infos[n as usize].hash.clone()).unwrap();
-        data.push(cur_data);
+        datas.push(cur_data);
         remainder = remainder_new;
     }
-
+    
     Ok((remainder,
         RSZ {
             header,
             object_table,
             instance_infos,
             userdata_infos,
-            data
+            data: datas
         }
     ))
 }
