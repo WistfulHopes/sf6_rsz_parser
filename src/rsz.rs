@@ -860,11 +860,11 @@ pub fn parse_gobject_ref_info(input: &[u8]) -> IResult<&[u8], GameObjectRefInfo>
 #[derive(Serialize, Deserialize)]
 pub struct ResourceInfo {
     #[serde(skip)]
-    pub str_offset: u64,
+    pub str_offset: Option<u64>,
     pub string: String,
 }
 
-pub fn parse_resource_info(input: &[u8], offset: usize) -> IResult<&[u8], ResourceInfo> {
+pub fn parse_resource_info_sf6(input: &[u8], offset: usize) -> IResult<&[u8], ResourceInfo> {
     let remainder = &input[offset..];
     let (remainder, str_offset) = le_u64::<&[u8], nom::error::Error<&[u8]>>(remainder).unwrap();
 
@@ -873,11 +873,29 @@ pub fn parse_resource_info(input: &[u8], offset: usize) -> IResult<&[u8], Resour
     string = string.replace("\u{0}", "");
 
     Ok((remainder, ResourceInfo {
-        str_offset,
+        str_offset:Some(str_offset),
         string,
     }))
 }
 
+pub fn parse_resource_info_dmc5(input: &[u8], offset: usize) -> IResult<&[u8], ResourceInfo> {
+    let remainder = &input[offset..];
+
+    let str_remainder = &input[offset as usize..];
+    let (_, mut string) = map(take_until::<&str, &[u8], nom::error::Error<&[u8]>>("\0\0"), lossy_to_str)(str_remainder).unwrap();
+    string = string.replace("\u{0}", "");
+
+    Ok((remainder, ResourceInfo {
+        str_offset:None,
+        string,
+    }))
+}
+pub fn parse_resource_info(input: &[u8], offset: usize,is16version:bool) -> IResult<&[u8], ResourceInfo> {
+    match is16version{
+        true=>parse_resource_info_dmc5(input, offset),
+        false=>parse_resource_info_sf6(input, offset),
+    }
+}
 #[derive(Serialize, Deserialize)]
 pub struct RSZHeader {
     #[serde(skip)]

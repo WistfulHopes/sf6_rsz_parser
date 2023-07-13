@@ -41,8 +41,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nArguments not provided! The argument should be the file to parse.")
     }
 
-    let json_bytes = include_bytes_zstd!("rszsf6.json", 9);
-    
+    //check file ending to determine if file from SF6 or DMC5
+    let json_bytes = match args[1].ends_with(".17"){
+        true=>include_bytes_zstd!("rszsf6.json", 9),
+        false=>include_bytes_zstd!("rszdmc5.json", 9),
+    };
+    //sets up the parser to parse RSZ's from the selected game
     parse_json(json_bytes)?;
     
     let mut reader = BufReader::with_capacity(0x7fffff,File::open(&args[1]).unwrap());
@@ -61,10 +65,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::write(json_name, serialized_fchar)?;
         println!("Complete!");
     }
-    
-    else if args[1].ends_with("pfb.17")
+    //From what I can tell this is basically how alpha checks if the file is from an older re game or if it's from a newer one. 
+    else if args[1].ends_with("pfb.17") || args[1].ends_with("pfb.16")
     {
-        let pfb_file = prefab::parse_prefab(&buffer).unwrap().1;
+        let pfb_file = prefab::parse_prefab(&buffer,args[1].ends_with("pfb.16")).unwrap().1;
         let serialized_prefab = serde_json::to_string_pretty(&pfb_file).unwrap();
         
         println!("Writing prefab to json...");
